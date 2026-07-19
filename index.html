@@ -81,6 +81,30 @@
     justify-content:center;cursor:pointer;font-size:19px;color:var(--text);}
   #panel.collapsed ~ #toggle{display:flex;}
   #hint{position:absolute;bottom:12px;left:0;right:0;text-align:center;font-size:12px;color:var(--muted);pointer-events:none;padding:0 12px;}
+
+  /* help — a native <dialog>, so Escape closes it for free */
+  .hdr{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;}
+  #help{flex:0 0 auto;width:22px;height:22px;padding:0;border-radius:50%;
+    background:#10151d;border:1px solid var(--border);color:var(--muted);
+    font-size:12px;font-weight:700;line-height:1;cursor:pointer;}
+  #help:hover{background:#10151d;color:var(--accent);border-color:var(--accent);}
+  #helpdlg{max-width:560px;width:calc(100vw - 32px);max-height:calc(100vh - 48px);
+    background:var(--panel);color:var(--text);border:1px solid var(--border);
+    border-radius:15px;padding:0;box-shadow:0 18px 60px rgba(0,0,0,.6);overflow:hidden;}
+  #helpdlg::backdrop{background:rgba(6,9,14,.66);}
+  #helpbody{padding:20px 22px;overflow-y:auto;max-height:calc(100vh - 48px);
+    font-size:12.5px;line-height:1.5;}
+  #helpbody h2{font-size:15px;margin:0 0 4px;}
+  #helpbody h3{font-size:10px;text-transform:uppercase;letter-spacing:1px;
+    color:var(--muted);margin:16px 0 6px;border-top:1px solid var(--border);padding-top:11px;}
+  #helpbody p{margin:0 0 8px;color:var(--muted);}
+  #helpbody dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:5px 12px;}
+  #helpbody dt{color:var(--accent2);font-weight:600;white-space:nowrap;}
+  #helpbody dd{margin:0;color:var(--muted);}
+  #helpbody b{color:var(--text);font-weight:600;}
+  #helpclose{position:absolute;top:12px;right:14px;flex:0 0 auto;width:26px;height:26px;
+    padding:0;border-radius:50%;background:var(--border);color:var(--text);
+    font-size:15px;line-height:1;cursor:pointer;}
   .credit{font-size:10px;color:#5a6472;margin-top:12px;text-align:center;line-height:1.5;}
 </style>
 </head>
@@ -88,7 +112,10 @@
 <canvas id="c"></canvas>
 
 <div id="panel">
-  <h1>Coupler-Curve Thermometer</h1>
+  <div class="hdr">
+    <h1>Coupler-Curve Thermometer</h1>
+    <button id="help" title="Help" aria-label="Help">?</button>
+  </div>
   <p class="sub">Linear actuator (24″ retracted / 42″ extended, 18″ stroke) → bell crank → four-bar → second four-bar. The indicator IS a coupler point — the scale is the spline it traces.</p>
 
   <div class="readout">
@@ -116,9 +143,8 @@
     <div><label>Scale max °F</label><input type="number" id="tmax" value="110" step="5" min="-80" max="200"></div>
   </div>
   <div class="checks">
-    <label class="chk"><input type="checkbox" id="demo" checked> Auto-cycle</label>
-    <label class="chk"><input type="checkbox" id="reveal" checked> Show mechanism</label>
-    <label class="chk"><input type="checkbox" id="tdir"> Reverse scale (retract = hot)</label>
+    <label class="chk"><input type="checkbox" id="demo" checked> Animate</label>
+    <label class="chk"><input type="checkbox" id="tdir"> Reverse scale</label>
   </div>
   <div class="row" style="margin-top:10px;">
     <label>Animation speed <b id="speedV">1.0×</b></label>
@@ -130,6 +156,7 @@
     <label class="chk"><input type="checkbox" id="ticks" checked> Scale ticks</label>
     <label class="chk"><input type="checkbox" id="ghost"> Inner curves</label>
     <label class="chk"><input type="checkbox" id="showBox"> Bounding box</label>
+    <label class="chk"><input type="checkbox" id="dims"> Dimensions</label>
   </div>
   <div class="row" style="margin-top:10px;">
     <label>Rotate view <b id="rotV">110°</b></label>
@@ -201,6 +228,71 @@
   </div>
   <div class="credit">Ticks are equal steps of temperature —<br>their spacing on the spline is the mechanism talking.</div>
 </div>
+<dialog id="helpdlg">
+  <button id="helpclose" title="Close" aria-label="Close">×</button>
+  <div id="helpbody">
+    <h2>Coupler-Curve Thermometer</h2>
+    <p>A design simulator for a garden sculpture that shows temperature. An actuator
+    drives a bell crank into two chained four-bar linkages; the indicator is the second
+    stage's coupler point, and the <b>path</b> it traces is the scale you engrave.
+    Equal temperature steps land at unequal spacing — that is the whole idea.</p>
+
+    <h3>On the canvas</h3>
+    <dl>
+      <dt>Drag a mount or pin</dt><dd>Reshapes the linkage. Stops Animate so you
+        aren't tuning against a moving target.</dd>
+      <dt>Right-drag / drag empty space</dt><dd>Pan the view.</dd>
+      <dt>Mouse wheel</dt><dd>Zoom. Forward zooms in, centred on the pointer.</dd>
+      <dt>Double-click</dt><dd>Recentre and reset zoom.</dd>
+      <dt>Hover a part</dt><dd>Names it and highlights the sliders that control it.</dd>
+      <dt>Space</dt><dd>Play / pause the temperature sweep.</dd>
+      <dt>Ctrl/Cmd + Z</dt><dd>Undo — drags, presets, Reset, loading a design.</dd>
+    </dl>
+
+    <h3>Reading the path</h3>
+    <p>A black division crosses the path every <b>1&nbsp;°F</b>, labelled every 10°.
+    Where they bunch, the indicator barely moves; where they spread, it races. The
+    indicator is a transparent ring so you read the divisions through it — on the real
+    piece it will be a ring with a hole.</p>
+
+    <h3>The panel</h3>
+    <dl>
+      <dt>Preset</dt><dd>Serpentine is the chosen design. Any edit switches to
+        "custom"; <b>Reset preset</b> restores it and squares up the view.</dd>
+      <dt>Temperature</dt><dd>Scale min/max, the reading, <b>Animate</b> and its speed.
+        <b>Reverse scale</b> makes the retracted end hot instead of cold.</dd>
+      <dt>Display</dt><dd>Ticks, inner curves (every joint's swept trace), the bounding
+        box, dimensions, and view rotation in 10° steps.</dd>
+      <dt>Bounding box</dt><dd>The footprint of everything — path, swept joints and all
+        four mounts — <b>at the current view angle</b>. Rotate to your mounting angle to
+        see what the piece occupies there.</dd>
+      <dt>Dimensions</dt><dd>Labels every link and triangle edge, the live actuator
+        length, and each mount's x, y. Coordinates run from a datum at the bounding
+        box's <b>lower-left corner</b>, X right and Y up, so they are all positive. The
+        Points DXF exports from that same datum.</dd>
+      <dt>Stage 1 / Stage 2</dt><dd>Link lengths, ground positions and coupler-point
+        offsets for each four-bar.</dd>
+      <dt>Actuator drive</dt><dd>Crank radius, anchor distance and angle, plus the
+        excursion — the slice of the 18″ stroke actually used.</dd>
+    </dl>
+
+    <h3>Saving and exporting</h3>
+    <p>Type a name and press <b>Save</b> to keep a design in the browser; recall it from
+    the dropdown. The page always opens on its built-in defaults — nothing is restored
+    automatically.</p>
+    <p><b>Parts DXF</b> writes the five links laid flat, one layer each.
+    <b>Points DXF</b> writes the path, its divisions, the labels and the mounts. Both
+    are in inches, ready for Fusion.</p>
+
+    <h3>Before you cut</h3>
+    <p>See <b>FABRICATION.md</b> and <b>TODO.md</b> in the repository — the measured
+    scale behaviour and the open concerns, including mount clearance and how little
+    headroom the actuator has.</p>
+
+    <p style="margin-top:14px;color:#5a6472;">Escape, the ×, or a click outside closes
+    this.</p>
+  </div>
+</dialog>
 <div id="toggle">☰</div>
 <div id="tip"><div class="n"></div><div class="s"></div></div>
 <div id="hint">Drag mounts &amp; joint pins to reshape · right-drag or drag empty space to pan, double-click to recenter · <b>Space</b> plays/pauses · <b>Ctrl+Z</b> undoes</div>
@@ -228,7 +320,7 @@
   };
 
   const geo=Object.assign({}, PRESETS.serpentine);
-  const cfg={temp:70, tmin:-20, tmax:110, demo:true, reveal:true, ticks:true, ghost:false, showBox:false, speed:0.1, tdir:false, rot:110,
+  const cfg={temp:70, tmin:-20, tmax:110, demo:true, ticks:true, ghost:false, showBox:false, dims:false, speed:0.1, tdir:false, rot:110,
              extMin:0, extMax:15.5,    // used slice of the actuator stroke, in inches of extension
                                        // 15.5 is near the ceiling for the serpentine preset:
                                        // dA+rA=40.25, so past ~15.75″ the drive triangle won't close
@@ -441,16 +533,16 @@
     if(cfg.showBox) drawBBox();
     drawScale();
     if(cfg.ghost) drawGhost();
-    if(cfg.reveal) drawMechanism(p);
+    drawMechanism(p);
     // highlight dragged mount or hovered component
-    if(cfg.reveal && dragPivot){
+    if(dragPivot){
       const q=pivotPos(dragPivot,p);
       if(q){
         const s=TX(q);
         ctx.beginPath(); ctx.arc(s.x,s.y,15,0,Math.PI*2);
         ctx.strokeStyle='rgba(246,168,51,.8)'; ctx.lineWidth=2.5; ctx.stroke();
       }
-    } else if(cfg.reveal && hoverCompId){
+    } else if(hoverCompId){
       const c=buildComps(p).find(x=>x.id===hoverCompId);
       if(c){
         ctx.save();
@@ -470,6 +562,7 @@
         ctx.restore();
       }
     }
+    if(cfg.dims) drawDims(p);
     drawIndicator(p);
     updateReadout(p);
   }
@@ -617,6 +710,63 @@
     if(p.D) joint(p.D,4.5,'#e8edf3');
   }
 
+  // ---------- dimension overlay ----------
+  // Every number here is MEASURED from the current pose, not read back from geo, so a
+  // label can never disagree with what is drawn.
+  // Coordinates are given from a DATUM at the lower-left corner of the bounding box,
+  // X right and Y UP, so everything reads positive — the way you'd lay it out on stock.
+  // The box lives in rotated space, so that corner is the visual lower-left at ANY view
+  // rotation. Two things this deliberately does NOT match:
+  //   - the panel sliders, which are still O2-relative with y positive downward;
+  //   - the DXF export, whose origin is O2 and whose y is flipped for CAD.
+  function dimText(sx,sy,txt){
+    ctx.font='600 10px -apple-system,sans-serif';
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    const w=ctx.measureText(txt).width;
+    ctx.fillStyle='rgba(16,20,27,.85)';
+    ctx.fillRect(sx-w/2-3, sy-7, w+6, 14);
+    ctx.fillStyle='#c9d4e2';
+    ctx.fillText(txt, sx, sy);
+  }
+  function drawDims(p){
+    if(!p.B) return;
+    const inches=v=>v.toFixed(2)+'″';
+    const dist=(a,b)=>Math.hypot(a.x-b.x, a.y-b.y);
+    // label at fraction f along a segment, so collinear pairs don't stack
+    const seg=(a,b,f,pre)=>{
+      if(!a||!b) return;
+      const A=TX(a), B=TX(b);
+      dimText(A.x+(B.x-A.x)*f, A.y+(B.y-A.y)*f, (pre?pre+' ':'')+inches(dist(a,b)));
+    };
+    const at=(q,dx,dy,txt)=>{ if(!q) return; const s=TX(q); dimText(s.x+dx, s.y+dy, txt); };
+
+    if(p.anchor&&p.R) seg(p.anchor,p.R,0.5,'ACT');   // live pin-to-pin, varies with temp
+    seg(p.O2,p.R,0.80,'rA');                         // rA and L2 are collinear on the
+    seg(p.O2,p.B,0.35,'L2');                         // crank, so offset them apart
+    seg(p.B,p.C,0.5,'L3'); seg(p.C,p.P,0.5); seg(p.P,p.B,0.5);      // stage-1 plate
+    seg(p.O4,p.C,0.5,'L4');
+    seg(p.P,p.D,0.5,'L5'); seg(p.D,p.Q,0.5); seg(p.Q,p.P,0.5);      // stage-2 plate
+    seg(p.O6,p.D,0.5,'L6');
+    // fixed mount coordinates, from the datum
+    if(!bbox) return;
+    // screen y is down, so the box's visual BOTTOM edge is y1. X right, Y up from there.
+    // -0.005 rounds to "-0.00" at 2dp, so snap anything inside half a display unit to
+    // zero. Every coordinate from this datum is non-negative by construction.
+    const nz=v=>Math.abs(v)<0.005?0:v;
+    const datum=q=>{ const r=rotPt(q); return {x:nz(r.x-bbox.x0), y:nz(bbox.y1-r.y)}; };
+    const coord=(q,name)=>{ if(!q) return; const c=datum(q);
+      at(q,0,-16,name+' '+inches(c.x)+', '+inches(c.y)); };
+    coord(p.anchor,'anchor'); coord(p.O2,'O2'); coord(p.O4,'O4'); coord(p.O6,'O6');
+    // mark the datum itself, so 0,0 is never in doubt — drawn whether or not the
+    // bounding box outline is switched on
+    const d=TXr({x:bbox.x0,y:bbox.y1});
+    ctx.strokeStyle='#4fd1c5'; ctx.lineWidth=1.5;
+    ctx.beginPath();
+    ctx.moveTo(d.x, d.y-14); ctx.lineTo(d.x, d.y); ctx.lineTo(d.x+14, d.y);
+    ctx.stroke();
+    dimText(d.x+22, d.y+9, '0, 0');
+  }
+
   function drawIndicator(p){
     if(!p.Q) return;
     const s=TX(p.Q);
@@ -693,7 +843,7 @@
     cfg.demo=false; document.getElementById('demo').checked=false;
     document.getElementById('tempV').textContent=Math.round(cfg.temp)+'°F';
   });
-  ['demo','reveal','ticks','ghost','showBox'].forEach(k=>{
+  ['demo','ticks','ghost','showBox','dims'].forEach(k=>{
     const el=document.getElementById(k);
     el.addEventListener('change',()=>cfg[k]=el.checked);
   });
@@ -785,7 +935,7 @@
     document.getElementById('speedV').textContent=(+cfg.speed).toFixed(1)+'×';
     document.getElementById('rot').value=cfg.rot;
     document.getElementById('rotV').textContent=cfg.rot+'°';
-    ['demo','reveal','ticks','ghost','showBox','tdir'].forEach(k=>document.getElementById(k).checked=!!cfg[k]);
+    ['demo','ticks','ghost','showBox','dims','tdir'].forEach(k=>document.getElementById(k).checked=!!cfg[k]);
   }
   // named designs live in one map under SAVESKEY
   const SAVESKEY='couplerThermometer.saves';
@@ -815,7 +965,7 @@
     cfg.extMin=clamp(cfg.extMin,0,17); cfg.extMax=clamp(cfg.extMax,cfg.extMin+1,18);
     cfg.hole=clamp(cfg.hole,0.0625,2); cfg.lwid=clamp(cfg.lwid,0.5,6);
     cfg.rot=clamp(Math.round(cfg.rot/10)*10,0,360);
-    ['demo','reveal','ticks','ghost','showBox','tdir'].forEach(k=>{ if(typeof data.cfg[k]==='boolean') cfg[k]=data.cfg[k]; });
+    ['demo','ticks','ghost','showBox','dims','tdir'].forEach(k=>{ if(typeof data.cfg[k]==='boolean') cfg[k]=data.cfg[k]; });
     if(data.preset) document.getElementById('preset').value=data.preset;
     syncUI();
     return true;
@@ -937,7 +1087,20 @@
   }
   function buildPoints(){
     DXF.start();
-    const f=p=>F(p.x,p.y);
+    if(!bbox) return DXF.doc();
+    // World -> CAD. Rotates exactly as the view is rotated, then measures from the
+    // bounding box's lower-left corner with Y up — the same datum the on-screen
+    // dimension overlay reports. Rotate the view to the orientation you want cut.
+    // Two things NOT to assume:
+    //   - extents are SMALLER than the box's stated W x H, because the box also bounds
+    //     the swept linkage and this file only carries the path and the mounts;
+    //   - division marks straddle the path and labels sit outside it, so those can
+    //     overhang a datum edge by up to half the path width. Mount and path points
+    //     themselves are all positive.
+    // (buildParts is unaffected: its parts are laid out in their own local frames.)
+    const f=p=>{ const r=rotPt(p); return {x:r.x-bbox.x0, y:bbox.y1-r.y}; };
+    // direction vectors take the same rotation, then the same y flip — no datum offset
+    const fd=(x,y)=>{ const r=rotDir(x,y); return {x:r.x, y:-r.y}; };
     for(let i=1;i<=NSAMP;i++)
       if(pathQ[i]&&pathQ[i-1]) DXF.line('SCALE_CURVE', f(pathQ[i-1]), f(pathQ[i]));
     // Divisions, one per whole degree, cut ACROSS the path — the same marks drawScale
@@ -950,17 +1113,16 @@
     pathChunks.forEach(c=>{
       const a=c.pts[c.pts.length-2], b=c.pts[c.pts.length-1];
       const dx=b.x-a.x, dy=b.y-a.y, L=Math.hypot(dx,dy)||1;
-      // world normal, then mirrored into CAD space as a vector (y flips, so ny negates)
-      const q=f(b), nx=-dy/L, ny=-(dx/L);
-      DXF.line('PATH_DIVISIONS', {x:q.x-nx*PATHW/2, y:q.y-ny*PATHW/2},
-                                 {x:q.x+nx*PATHW/2, y:q.y+ny*PATHW/2});
+      const q=f(b), n=fd(-dy/L, dx/L);             // world normal, then into CAD space
+      DXF.line('PATH_DIVISIONS', {x:q.x-n.x*PATHW/2, y:q.y-n.y*PATHW/2},
+                                 {x:q.x+n.x*PATHW/2, y:q.y+n.y*PATHW/2});
     });
     // labels every 10°, just clear of the path edge, matching the screen layout
     tickCache.forEach(k=>{
       if(!k.major) return;
-      const q=f(k.q), nx=k.nx, ny=-k.ny, off=PATHW*0.9;
+      const q=f(k.q), n=fd(k.nx,k.ny), off=PATHW*0.9;
       DXF.point('POINTS', q);                      // snap target: exact indicator position
-      DXF.text('LABELS',{x:q.x+nx*off-0.18, y:q.y+ny*off-0.11}, 0.28, k.t+'F');
+      DXF.text('LABELS',{x:q.x+n.x*off-0.18, y:q.y+n.y*off-0.11}, 0.28, k.t+'F');
     });
     const p=pose(cfg.temp);
     [['O2',p.O2],['O4_ROCKER1',p.O4],['O6_ROCKER2',p.O6],['ACT_ANCHOR',p.anchor]].forEach(m=>{
@@ -1137,7 +1299,6 @@
     return {x:view.cx+dx*c-dy*s, y:view.cy+dx*s+dy*c, sx, sy};
   }
   function pickPivot(sx,sy){
-    if(!cfg.reveal) return null;
     const p=pose(cfg.temp);
     let best=null, bd=20;
     HANDLES.forEach(n=>{
@@ -1191,6 +1352,9 @@
     demoT=Math.acos(1-2*f)/(2*Math.PI);
   }
   window.addEventListener('keydown',e=>{
+    // help is modal: don't let Space or Ctrl+Z reach the sim behind it. helpdlg is a
+    // const declared further down, but this only ever runs after init, so it's bound.
+    if(helpdlg.open) return;
     const fld=document.activeElement;
     const typing=fld && fld.tagName==='INPUT' && /text|number/.test(fld.type);
     if(e.code==='KeyZ' && (e.ctrlKey||e.metaKey)){
@@ -1218,7 +1382,7 @@
     }
     const w=worldOf(e);
     if(!dragPivot){
-      const comp=cfg.reveal?hitComp(w.sx,w.sy):null;
+      const comp=hitComp(w.sx,w.sy);
       hoverCompId=comp?comp.id:null;
       hoverPivot=comp ? (comp.id==='anchorM'?'anchor':(HANDLES.includes(comp.id)?comp.id:null)) : null;
       canvas.style.cursor=hoverPivot?'grab':(comp?'pointer':'default');
@@ -1308,6 +1472,13 @@
     cfg.rot=0;                         // Reset squares the view back up as well
     syncUI(); rebuildPath();           // syncUI, not syncSliders: the rot slider moved too
   });
+  // help dialog. <dialog>.showModal() gives Escape-to-close and a backdrop for free;
+  // a click that lands on the dialog element itself IS the backdrop, so that closes too.
+  const helpdlg=document.getElementById('helpdlg');
+  document.getElementById('help').addEventListener('click',()=>helpdlg.showModal());
+  document.getElementById('helpclose').addEventListener('click',()=>helpdlg.close());
+  helpdlg.addEventListener('click',e=>{ if(e.target===helpdlg) helpdlg.close(); });
+
   const panel=document.getElementById('panel');
   document.getElementById('hide').addEventListener('click',()=>panel.classList.add('collapsed'));
   document.getElementById('toggle').addEventListener('click',()=>panel.classList.remove('collapsed'));

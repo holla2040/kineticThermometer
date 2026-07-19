@@ -175,10 +175,22 @@ with sync_playwright() as p:
     assert "POINTS" in play and "SCALE_CURVE" in play and "MOUNTS" in play, play
     npt = sum(1 for e in po if e["type"] == "POINT")
     assert npt >= 4 + 13, npt      # 4 mounts + one per 10F tick over -20..110
-    # mounts land where the sim says they do (y flipped)
-    mount_pts = [(float(e[10][0]), float(e[20][0])) for e in po if e["type"] == "POINT"]
-    assert (0.0, 0.0) in [(round(x,6), round(y,6)) for x, y in mount_pts], "O2 at origin"
-    assert (round(geo["gx"],6), round(-geo["gy"],6)) in [(round(x,6), round(y,6)) for x, y in mount_pts], "O4"
+    # Mounts land at their DATUM coordinates: origin is the bounding box's lower-left
+    # corner, X right and Y up, rotated with the view -- the same numbers the on-screen
+    # dimension overlay reports. O2 is no longer at the origin.
+    mount_pts = [(round(float(e[10][0]), 6), round(float(e[20][0]), 6))
+                 for e in po if e["type"] == "POINT"]
+    want = pg.evaluate("""(() => {
+      const b = __ct.bbox, p = __ct.pose(__ct.cfg.temp);
+      const D = q => { const r = __ct.rotPt(q); return [r.x - b.x0, b.y1 - r.y]; };
+      const o = {}; ['O2','O4','O6','anchor'].forEach(k => o[k] = D(p[k]));
+      return o; })()""")
+    for name, (wx, wy) in want.items():
+        assert any(math.hypot(px-wx, py-wy) < 1e-5 for px, py in mount_pts), \
+            f"{name} should export at datum {wx:.4f},{wy:.4f}"
+        assert wx >= -1e-9 and wy >= -1e-9, f"{name} datum coords must be positive"
+    print("mounts export at their datum coords, e.g. O2 "
+          f"{want['O2'][0]:.2f},{want['O2'][1]:.2f} (not the origin any more)")
     print("mount points ok; total POINT entities:", npt)
 
     # ---- 3. save-dialog path --------------------------------------------
@@ -324,31 +336,40 @@ with sync_playwright() as p:
 
     # every division is centred on the path and exactly one path-width long
     ticks = pg.evaluate("__ct.ticks.map(k=>({t:k.t,x:k.q.x,y:k.q.y,nx:k.nx,ny:k.ny,major:k.major}))")
-    ends = pg.evaluate("__ct.chunks.map(c=>c.pts[c.pts.length-1])")
+    # chunk ends mapped through the same datum the export uses: rotate, then measure
+    # from the box's lower-left corner with Y up
+    ends = pg.evaluate("""(() => { const b = __ct.bbox;
+      return __ct.chunks.map(c => { const r = __ct.rotPt(c.pts[c.pts.length-1]);
+        return {x: r.x - b.x0, y: b.y1 - r.y}; }); })()""")
     for e in so:
         if e["type"] != "LINE" or e[8][0] != "PATH_DIVISIONS": continue
         x0, y0, x1, y1 = (float(e[c][0]) for c in (10, 20, 11, 21))
-        assert abs(math.hypot(x1-x0, y1-y0) - 1.0) < 1e-6, "division = 1.0in path width"
+        # 1e-5, not 1e-6: DXF.n() writes 6 decimal places, and once the view rotation
+        # makes the coordinates irrational that rounding costs ~1e-6 per endpoint
+        assert abs(math.hypot(x1-x0, y1-y0) - 1.0) < 1e-5, "division = 1.0in path width"
         mx, my = (x0+x1)/2, (y0+y1)/2
-        near = min(math.hypot(mx-q["x"], my+q["y"]) for q in ends)   # y flipped in CAD
-        assert near < 1e-6, f"division not centred on a chunk boundary (off {near})"
+        near = min(math.hypot(mx-q["x"], my-q["y"]) for q in ends)   # both in datum frame
+        assert near < 1e-5, f"division not centred on a chunk boundary (off {near})"
     print(f"{lay['PATH_DIVISIONS']} divisions, each 1.00in and centred on a whole degree")
 
     # a division must be perpendicular to the path. Reference tangent comes from pose()
     # either side of the boundary temperature -- independent of the drawing code, and
     # local: a whole-degree chord is a bad proxy where the path turns 63 degrees.
-    tangents = pg.evaluate("""__ct.chunks.map(c => {
-      const T = c.t + 0.5;                       // c.t is the chunk midpoint
-      const a = __ct.pose(T - 0.05), b = __ct.pose(T + 0.05);
-      if (!a.valid || !b.valid) return null;
-      return {T, x: b.Q.x - a.Q.x, y: -(b.Q.y - a.Q.y)};   // mirrored into CAD space
-    })""")
+    tangents = pg.evaluate("""(() => { const bb = __ct.bbox;
+      const D = q => { const r = __ct.rotPt(q); return {x: r.x - bb.x0, y: bb.y1 - r.y}; };
+      return __ct.chunks.map(c => {
+        const T = c.t + 0.5;                     // c.t is the chunk midpoint
+        const a = __ct.pose(T - 0.05), b = __ct.pose(T + 0.05);
+        if (!a.valid || !b.valid) return null;
+        const A = D(a.Q), B = D(b.Q);            // datum frame carries rotation + flip
+        return {T, x: B.x - A.x, y: B.y - A.y};
+      }); })()""")
     divs = [e for e in so if e["type"] == "LINE" and e[8][0] == "PATH_DIVISIONS"]
     worst, worst_at = 0.0, None
     for e in divs:
         x0, y0, x1, y1 = (float(e[c][0]) for c in (10, 20, 11, 21))
         mx, my = (x0+x1)/2, (y0+y1)/2
-        i = min(range(len(ends)), key=lambda k: math.hypot(mx-ends[k]["x"], my+ends[k]["y"]))
+        i = min(range(len(ends)), key=lambda k: math.hypot(mx-ends[k]["x"], my-ends[k]["y"]))
         t = tangents[i]
         if not t: continue
         tl = math.hypot(t["x"], t["y"]) or 1
