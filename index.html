@@ -120,13 +120,13 @@
   </div>
   <div class="row" style="margin-top:10px;">
     <label>Animation speed <b id="speedV">1.0×</b></label>
-    <input type="range" id="speed" min="0.05" max="1" value="1" step="0.05">
+    <input type="range" id="speed" min="0.05" max="1" value="0.1" step="0.05">
   </div>
 
   <div class="sec">Display</div>
   <div class="checks">
     <label class="chk"><input type="checkbox" id="ticks" checked> Scale ticks</label>
-    <label class="chk"><input type="checkbox" id="ghost"> Inner curves</label>
+    <label class="chk"><input type="checkbox" id="ghost" checked> Inner curves</label>
   </div>
 
   <details class="fold">
@@ -154,7 +154,7 @@
     <summary>Actuator drive (24″–42″)</summary>
     <div class="row pair">
       <div><label>Excursion min ″</label><input type="number" id="extMin" value="0" step="0.5" min="0" max="18"></div>
-      <div><label>Excursion max ″</label><input type="number" id="extMax" value="18" step="0.5" min="0" max="18"></div>
+      <div><label>Excursion max ″</label><input type="number" id="extMax" value="17" step="0.5" min="0" max="18"></div>
     </div>
     <div class="row"><label>Crank radius rA <b id="rAV"></b></label><input type="range" id="rA" min="8" max="24" step="0.1"></div>
     <div class="row"><label>Anchor dist. dA <b id="dAV"></b></label><input type="range" id="dA" min="16" max="40" step="0.1"></div>
@@ -194,15 +194,15 @@
   // fabrication-friendly presets: all fixed mounts cluster on one side of the scale,
   // and the spline never passes between any two mounting points
   const PRESETS={
-    serpentine:{rA:12.8, dA:33.1, anch:-127.2, gx:12.9, gy:-6.0, L2:11.4, L3:11.2, L4:9.6,
-                cu:3.5, cv:11.3, s1:-1, ox:8.1, oy:-12.0, L5:5.9, L6:14.0, cu2:14.6, cv2:3.6, s2:-1},
+    serpentine:{rA:12.8, dA:29.15, anch:-145.97, gx:12.9, gy:-6.0, L2:11.4, L3:10.4, L4:9.6,
+                cu:3.5, cv:11.3, s1:-1, ox:6.30, oy:-16.71, L5:5.9, L6:14.0, cu2:14.6, cv2:3.6, s2:-1},
     grandarc:  {rA:20.8, dA:31.7, anch:166.7, gx:-3.8, gy:-0.1, L2:11.9, L3:11.8, L4:12.6,
                 cu:19.6, cv:-5.2, s1:-1, ox:7.7, oy:-7.6, L5:8.5, L6:13.5, cu2:19.3, cv2:-12.0, s2:-1}
   };
 
   const geo=Object.assign({}, PRESETS.serpentine);
-  const cfg={temp:70, tmin:-20, tmax:110, demo:true, reveal:true, ticks:true, ghost:false, speed:1, tdir:false,
-             extMin:0, extMax:18};     // used slice of the actuator stroke, in inches of extension
+  const cfg={temp:70, tmin:-20, tmax:110, demo:true, reveal:true, ticks:true, ghost:true, speed:0.1, tdir:false,
+             extMin:0, extMax:17};     // used slice of the actuator stroke, in inches of extension
   // actuator stroke envelope (pin-to-pin): 24″ retracted + 18″ stroke = 42″ extended
   const ACT={lmin:24, stroke:18};
   let demoT=0.35;
