@@ -22,7 +22,10 @@ unrelated FABRIK inverse-kinematics demo kept for reference.
 - The usable slice of stroke is configurable ("excursion min/max" fields,
   inches of extension 0–18) so the build can avoid end-stops.
 - Large freestanding garden piece; the serpentine preset's overall envelope
-  (scale curve plus all four mounts) is roughly 37″ × 19″.
+  is **40.7″ × 30.8″** square-on for the current serpentine — the path, every
+  swept joint, and all four mounts. At the 110° default view it reads
+  32.5″ × 43.3″. Measured, not aspirational; re-check after any geometry
+  change. (Earlier designs read 37″ × 19″ and 33.6″ × 19.3″.)
 
 ## Design requirements established so far
 
@@ -125,11 +128,16 @@ flow plus both DXF exports (`python3 tools/verify_export.py [outdir]`).
   first movement, so a grab-and-release pushes nothing. The preset label is
   re-derived from the restored geometry (presetOf) rather than snapshotted —
   the dropdown has already moved by the time its change event fires.
+- **Zoom**: mouse wheel, cursor-anchored — the point under the pointer stays
+  put. Wheel FORWARD zooms IN. `zoom` multiplies the fitted scale via
+  `scale()`; fitView centres using `scale()` too, or a refit would jump the
+  view whenever zoom != 1. Clamped 0.15–12. Not saved, same as pan.
 - **Pan**: right-drag anywhere, or drag empty canvas (so it works on touch).
-  Double-click recenters. `pan` is added on top of the auto-fit in TX() and
+  Double-click recenters AND resets zoom. `pan` is added on top of the auto-fit in TX() and
   subtracted back out in worldOf(), so a refit keeps it and pivot dragging
-  still tracks the cursor. Clamped to ±0.6 viewport so nothing gets lost.
-  Pan is the one view setting that is NOT saved — it's a transient nudge.
+  still tracks the cursor. clampPan() keeps it within ±0.6 viewport scaled by
+  zoom, so nothing gets lost. Pan and zoom are the view settings that are NOT
+  saved — they're transient nudges. Rotation IS saved.
 - **Rotate view** slider, `cfg.rot`, 0–360 in 10° steps, **counterclockwise**.
   Everything on the canvas goes through TX(), so rotating there turns the
   lot. Four things this had to get right, none of them optional:
@@ -145,7 +153,8 @@ flow plus both DXF exports (`python3 tools/verify_export.py [outdir]`).
   - worldOf() inverts the rotation, or a grabbed pivot drifts off the
     cursor. Verify this MID-drag: releasing refits the view and hides it.
   Reset preset zeroes the rotation (and so calls syncUI, not syncSliders).
-  Rotation is a view-only change — it must never alter a real dimension.
+  Rotation never alters a real dimension. The bounding box footprint DOES
+  change with it, but that is a different measurement, not the piece changing.
 - Hover: component highlight + tooltip naming the part + its sliders, and
   the matching slider rows highlight in the panel (COMPINFO / hlSliders).
 - Collapsible <details> sections for Stage 1 / Stage 2 / Actuator drive.
@@ -168,9 +177,8 @@ flow plus both DXF exports (`python3 tools/verify_export.py [outdir]`).
   their own division. The white major/minor comb beside the path was
   removed at the owner's request — it repeated what the divisions already
   say. 1° sub-ticks were built and removed too. Don't bring either back.
-  Note the DXF still exports TICKS_MAJOR/TICKS_MINOR strokes; screen and
-  export deliberately differ, because the division work was scoped to the
-  screen only.
+  The DXF matches: it emits no tick strokes either, only PATH_DIVISIONS and
+  the 10° labels.
   tickList positions come from pose() directly, NOT from indexing the
   140-sample path: several ticks land on one sample and the spacing — the
   whole point of this scale — comes out wrong. tickList also carries the
@@ -186,19 +194,29 @@ flow plus both DXF exports (`python3 tools/verify_export.py [outdir]`).
   dashed paths — R is the actuator rod end.
 - **Bounding box** ("Bounding box" checkbox, `cfg.showBox`, default on): a
   dashed rectangle round the whole design labelled with its overall size in
-  inches — 33.6″ × 19.3″ for the current serpentine. It gives a sense of the
+  inches — 40.7″ × 30.8″ square-on for the current serpentine. A sense of the
   real scale of the piece. Two things to preserve:
-  - buildBBox() runs BEFORE fitView() in rebuildPath. fitView deliberately
-    early-returns while a mount is being dragged; computing the box after it
-    would freeze the numbers mid-drag.
+  - buildBBox() runs AFTER fitView() in rebuildPath, because rotPt needs the
+    pivot fitView sets. It still tracks live during a drag: fitView
+    early-returns then, leaving the view frozen, and buildBBox is not gated.
+    Rotating calls `fitView(); bbox=buildBBox();` — the footprint changes.
   - It samples `pathChunks`, not `pathQ`. pathQ's 140 samples sit ~0.93°F
     apart and miss the path's extreme at the loop tip near 47°F — three
     points fell outside the box when it was built from pathQ.
-  It bounds the path plus the four fixed mounts (the same definition used
-  for "37″ × 19″" above), NOT the swept linkage — the inner curves can
-  visibly extend past it. Drawn as a polygon rather than strokeRect so it
-  turns with the view rotation. Named `showBox` in cfg because `bbox`
-  already holds the geometry.
+  It bounds **everything the piece sweeps**: the path, every moving joint's
+  trace (R, B, C, P, D from pathJ), and the four fixed mounts. Ticking the
+  box also ticks "Inner curves", so you can see what it is measuring —
+  otherwise it bounds things that aren't drawn. Named `showBox` in cfg
+  because `bbox` already holds the geometry.
+  The joint traces come from pathJ at 140 samples (~0.93°F apart), which
+  clips a smooth extremum by ~2 thou; the path itself uses the 6× finer
+  pathChunks. Fine for a 40″ piece — don't mistake it for a bug.
+  **Measured in ROTATED space**, so its edges stay square to the screen at any
+  view angle. That means w/h are the footprint AT THE CURRENT ORIENTATION and
+  DO change as you rotate — 40.7″ × 30.8″ square-on, swapping at 90°. That is
+  the point: rotate to the mounting angle and read what it occupies. The
+  transform is split for this — `TXr()` takes an already-rotated point,
+  `TX() = TXr(rotPt())` — and drawBBox uses TXr so it isn't rotated twice.
 - Settings persist to localStorage key `couplerThermometer.v2` (guarded
   try/catch — degrades to in-memory where storage is blocked); every Save
   writes it and it auto-restores on load. There is deliberately no manual
@@ -219,14 +237,16 @@ flow plus both DXF exports (`python3 tools/verify_export.py [outdir]`).
     circles at each hole (offset edges + corner arcs), so 2-hole links come
     out as capsules and 3-hole plates as rounded triangles. Driven by the
     "Pivot hole ⌀" and "Link width" fields (`cfg.hole` / `cfg.lwid`).
-  - *Points DXF* — the assembly frame: scale curve as line segments, 5°/10°
-    ticks with °F labels, the 4 mounts, and POINT entities at every 10°
-    tick and mount to snap to.
+  - *Points DXF* — the assembly frame: the path as line segments
+    (SCALE_CURVE), a division across it every whole degree
+    (PATH_DIVISIONS, `PATHW=1.0″` long), °F labels every 10°, the 4 mounts,
+    and POINT entities at every 10° mark and mount to snap to. No tick
+    strokes — the indicator ring would cover anything beside the path.
   Curves are line segments, not splines — fit a spline in Fusion if wanted.
 - Public view: uncheck "Show mechanism" — only the path + indicator ring.
 - Debug hook for tests: `window.__ct` = {pivotScreen(name), geo, cfg, pose,
-  pan, rebuild(), ticks, chunks, bbox, pathJ, undoDepth(), buildParts(),
-  buildPoints(), dump()}. The builders return DXF text so tests can assert on the export
+  pan, zoom, rotPt, rebuild(), ticks, chunks, bbox, pathJ, undoDepth(),
+  buildParts(), buildPoints(), dump()}. The builders return DXF text so tests can assert on the export
   without a download. `dump()` returns geo+cfg as JSON — this is how the
   owner hands over a hand-tuned design: `copy(__ct.dump())` in the console.
 
@@ -238,6 +258,9 @@ machine). Every feature was verified by driving the page: dispatch real
 persistence tests, screenshot and inspect. Keep doing this for changes.
 
 ## Known open items / next steps
+
+Tracked in **TODO.md**; fabrication measurements and the DXF layer
+reference in **FABRICATION.md**. Kept in sync — update those, not just here.
 
 1. **Fabrication document** (owner has asked for this "when design is
    final"): the DXF export now covers the drawing side — link outlines and

@@ -326,19 +326,27 @@
     pathLen=len; speedRatio=(mn>1e-9)?mx/mn:0;
     tickCache=tickList();              // only changes with geo/range, so not per frame
     pathChunks=buildChunks();
-    bbox=buildBBox();                  // before fitView: must update live during a drag
     fitView();
+    bbox=buildBBox();                  // after fitView: rotPt needs the pivot fitView sets
   }
-  // Overall envelope of the built piece: the path plus the four fixed mounts — the same
-  // definition the owner uses for "37″ × 19″". Recomputed with the path, NOT gated on
-  // dragPivot the way fitView is, so the numbers track live while a mount is dragged.
-  // Everything here is inside fitView's bounds, so the box is always on screen.
+  // Overall footprint of the built piece: the path, every moving joint's swept trace,
+  // and the four fixed mounts — the envelope the mechanism actually occupies.
+  // NOT gated on dragPivot the way fitView is, so the numbers track live while a mount
+  // is dragged. Note the swept joints CAN reach outside fitView's bounds, which fits to
+  // the path and the end poses only — so the box may extend past the visible content.
   function buildBBox(){
     let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
-    const add=p=>{if(!p)return; x0=Math.min(x0,p.x);y0=Math.min(y0,p.y);x1=Math.max(x1,p.x);y1=Math.max(y1,p.y);};
+    // measured in ROTATED space, so the box stays square to the screen at any view angle.
+    // Consequence: w/h are the footprint AT THIS ORIENTATION and change as you rotate —
+    // that is the point, it tells you what the piece occupies mounted at that angle.
+    const add=p0=>{if(!p0)return; const p=rotPt(p0);
+      x0=Math.min(x0,p.x);y0=Math.min(y0,p.y);x1=Math.max(x1,p.x);y1=Math.max(y1,p.y);};
     // pathChunks, not pathQ: pathQ's 140 samples sit ~0.93° apart and miss the extremes
     // where the path turns, notably the loop tip near 47°F. Chunks are 6× finer.
     pathChunks.forEach(c=>c.pts.forEach(add));
+    // every moving joint too (R, B, C, P, D swept over the whole range), so the box is
+    // the envelope the built piece actually sweeps — not just where the indicator goes
+    Object.keys(pathJ).forEach(k=>pathJ[k].forEach(add));
     const p=pose(cfg.temp);            // mounts are fixed, so any pose gives the same four
     ['O2','O4','O6','anchor'].forEach(k=>add(p[k]));
     if(x0>x1) return null;
@@ -346,27 +354,19 @@
   }
   function drawBBox(){
     if(!bbox) return;
-    // a polygon, not strokeRect: the box is a world-space rectangle, so it has to turn
-    // with the view. Labels stay horizontal and sit outside their own edge.
-    const c=[{x:bbox.x0,y:bbox.y0},{x:bbox.x1,y:bbox.y0},
-             {x:bbox.x1,y:bbox.y1},{x:bbox.x0,y:bbox.y1}].map(TX);
+    // bbox is already in rotated space, so TXr (no further rotation) gives a rectangle
+    // square to the screen at any view angle
+    const a=TXr({x:bbox.x0,y:bbox.y0}), b=TXr({x:bbox.x1,y:bbox.y1});
     ctx.save();
     ctx.setLineDash([6,5]);
     ctx.strokeStyle='rgba(138,148,166,.4)'; ctx.lineWidth=1;
-    ctx.beginPath();
-    c.forEach((q,i)=>i?ctx.lineTo(q.x,q.y):ctx.moveTo(q.x,q.y));
-    ctx.closePath(); ctx.stroke();
+    ctx.strokeRect(a.x, a.y, b.x-a.x, b.y-a.y);
     ctx.setLineDash([]);
     ctx.fillStyle='rgba(159,176,195,.85)'; ctx.font='600 11px -apple-system,sans-serif';
-    ctx.textAlign='center'; ctx.textBaseline='middle';
-    const mid={x:(c[0].x+c[2].x)/2, y:(c[0].y+c[2].y)/2};
-    const edgeLabel=(a,b,txt)=>{
-      const mx=(a.x+b.x)/2, my=(a.y+b.y)/2;
-      let ux=mx-mid.x, uy=my-mid.y; const L=Math.hypot(ux,uy)||1;
-      ctx.fillText(txt, mx+ux/L*13, my+uy/L*13);
-    };
-    edgeLabel(c[0],c[1], bbox.w.toFixed(1)+'″');
-    edgeLabel(c[0],c[3], bbox.h.toFixed(1)+'″');
+    ctx.textAlign='center'; ctx.textBaseline='bottom';
+    ctx.fillText(bbox.w.toFixed(1)+'″', (a.x+b.x)/2, a.y-5);
+    ctx.textAlign='right'; ctx.textBaseline='middle';
+    ctx.fillText(bbox.h.toFixed(1)+'″', a.x-6, (a.y+b.y)/2);
     ctx.restore();
   }
   // View rotation, cfg.rot degrees, about the UNROTATED content centre so the design spins
@@ -408,13 +408,21 @@
     const leftEdge=(W>640)?318:24;              // keep clear of the control panel
     const px=W-leftEdge-40, py=H-50;
     view.s=Math.min(px/mw, py/mh);
-    view.ox=leftEdge+(W-leftEdge-(rx0+rx1)*view.s)/2;
-    view.oy=(H-(ry0+ry1)*view.s)/2;
+    // centre using the ZOOMED scale, or a refit would jump the view whenever zoom != 1
+    view.ox=leftEdge+(W-leftEdge-(rx0+rx1)*scale())/2;
+    view.oy=(H-(ry0+ry1)*scale())/2;
   }
   // pan rides on top of the auto-fit, so a refit keeps wherever the user dragged the view to
   const pan={x:0,y:0};
-  const TX=p=>{const q=rotPt(p);
-    return {x:q.x*view.s+view.ox+pan.x, y:q.y*view.s+view.oy+pan.y};};
+  let zoom=1;                          // mouse-wheel zoom, on top of the auto-fit
+  const scale=()=>view.s*zoom;
+  const TXr=q=>({x:q.x*scale()+view.ox+pan.x, y:q.y*scale()+view.oy+pan.y});
+  const TX=p=>TXr(rotPt(p));           // world -> rotated -> screen
+  function clampPan(){                 // never let the drawing get pushed fully off-screen
+    const m=Math.max(1,zoom);
+    pan.x=clamp(pan.x,-W*0.6*m, W*0.6*m);
+    pan.y=clamp(pan.y,-H*0.6*m, H*0.6*m);
+  }
 
   // ---------- colors ----------
   function tempColor(t){
@@ -579,7 +587,7 @@
     if(p.anchor&&p.R){
       const A=TX(p.anchor), R=TX(p.R);
       const dx=R.x-A.x, dy=R.y-A.y, L=Math.hypot(dx,dy), ux=dx/L, uy=dy/L;
-      const bl=Math.min(L*0.6, ACT.lmin*view.s*0.92);
+      const bl=Math.min(L*0.6, ACT.lmin*scale()*0.92);
       ctx.lineCap='round';
       ctx.beginPath(); ctx.moveTo(A.x,A.y); ctx.lineTo(A.x+ux*bl,A.y+uy*bl);
       ctx.strokeStyle='#3a4453'; ctx.lineWidth=13; ctx.stroke();
@@ -689,6 +697,11 @@
     const el=document.getElementById(k);
     el.addEventListener('change',()=>cfg[k]=el.checked);
   });
+  document.getElementById('showBox').addEventListener('change',e=>{
+    // the box bounds the swept joints as well as the path, so turning it on turns on
+    // the inner curves too — otherwise it measures things you can't see
+    if(e.target.checked){ cfg.ghost=true; document.getElementById('ghost').checked=true; }
+  });
   function applyScaleRange(){
     const tsl=document.getElementById('temp');
     tsl.min=cfg.tmin; tsl.max=cfg.tmax;
@@ -740,7 +753,7 @@
   document.getElementById('rot').addEventListener('input',e=>{
     cfg.rot=parseFloat(e.target.value);
     document.getElementById('rotV').textContent=cfg.rot+'°';
-    fitView();                         // geometry is unchanged; only the framing moves
+    fitView(); bbox=buildBBox();       // geometry unchanged, but the footprint rotates
   });
   document.getElementById('speed').addEventListener('input',e=>{
     cfg.speed=parseFloat(e.target.value);
@@ -1117,7 +1130,7 @@
     const r=canvas.getBoundingClientRect();
     const sx=e.clientX-r.left, sy=e.clientY-r.top;
     // exact inverse of TX: undo pan+scale, then undo the rotation about the same centre
-    const wx=(sx-view.ox-pan.x)/view.s, wy=(sy-view.oy-pan.y)/view.s;
+    const wx=(sx-view.ox-pan.x)/scale(), wy=(sy-view.oy-pan.y)/scale();
     if(!cfg.rot) return {x:wx, y:wy, sx, sy};
     const c=Math.cos(-rotRad()), s=Math.sin(-rotRad());
     const dx=wx-view.cx, dy=wy-view.cy;
@@ -1157,7 +1170,20 @@
     canvas.setPointerCapture(e.pointerId); e.preventDefault();
   });
   canvas.addEventListener('pointerleave',hideTip);
-  canvas.addEventListener('dblclick',()=>{ pan.x=pan.y=0; });      // recenter
+  canvas.addEventListener('dblclick',()=>{ pan.x=pan.y=0; zoom=1; });   // recenter + reset zoom
+  // wheel zoom, anchored on the cursor: the point under the pointer stays put.
+  // Wheel FORWARD (negative deltaY) zooms IN.
+  canvas.addEventListener('wheel',e=>{
+    e.preventDefault();
+    const r=canvas.getBoundingClientRect();
+    const sx=e.clientX-r.left, sy=e.clientY-r.top;
+    const S0=scale();
+    const qx=(sx-view.ox-pan.x)/S0, qy=(sy-view.oy-pan.y)/S0;   // rotated-world under cursor
+    zoom=clamp(zoom*Math.exp(-e.deltaY*0.0015), 0.15, 12);
+    const S1=scale();
+    pan.x=sx-qx*S1-view.ox; pan.y=sy-qy*S1-view.oy;
+    clampPan();
+  },{passive:false});
   // spacebar toggles auto-cycle — always, except while typing in a text/number field
   function syncDemoPhase(){
     // resume the cycle from the CURRENT temperature so toggling never jumps
@@ -1184,8 +1210,7 @@
   canvas.addEventListener('pointermove',e=>{
     if(panning){
       // clamped so the mechanism can never be pushed entirely off-screen
-      pan.x=clamp(pan.x+e.clientX-lastScreen.x, -W*0.6, W*0.6);
-      pan.y=clamp(pan.y+e.clientY-lastScreen.y, -H*0.6, H*0.6);
+      pan.x+=e.clientX-lastScreen.x; pan.y+=e.clientY-lastScreen.y; clampPan();
       lastScreen={x:e.clientX,y:e.clientY};
       canvas.style.cursor='grabbing';
       e.preventDefault();
@@ -1267,6 +1292,7 @@
     get ticks(){ return tickCache; },
     get chunks(){ return pathChunks; },
     get bbox(){ return bbox; },
+    get zoom(){ return zoom; }, rotPt,
     undoDepth:()=>undoStack.length,
     get pathJ(){ return pathJ; },      // rebuildPath reassigns it, so read it live
     dump:()=>JSON.stringify({geo,cfg},null,1)

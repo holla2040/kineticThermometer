@@ -372,21 +372,25 @@ with sync_playwright() as p:
     # ---- 6b. envelope bounding box ---------------------------------------
     pg.select_option("#preset", "serpentine"); pg.wait_for_timeout(250)
     bb = pg.evaluate("__ct.bbox")
-    # must contain the whole path and all four mounts. Scanned far finer than the box's
-    # own sampling -- pathQ's 140 samples miss the loop tip near 47F, which is why the
-    # box is built from pathChunks instead.
+    # must contain the path, EVERY moving joint's swept trace, and all four mounts --
+    # the envelope the built piece actually occupies. Scanned far finer than the box's
+    # own sampling. Tolerance is 5 thou, not zero: the joint traces come from pathJ at
+    # 140 samples (~0.93F apart), which clips a smooth extremum by ~2 thou around P@58F.
+    # The path itself uses the 6x finer pathChunks and lands within 0.01 thou.
     over = pg.evaluate("""(() => {
       const b = __ct.bbox; let worst = 0, at = null;
       const chk = (p, n) => { if (!p) return;
         const d = Math.max(b.x0-p.x, p.x-b.x1, b.y0-p.y, p.y-b.y1);
         if (d > worst) { worst = d; at = n; } };
       for (let t = __ct.cfg.tmin; t <= __ct.cfg.tmax; t += 0.02) {
-        const q = __ct.pose(t); if (q.valid) chk(q.Q, 'Q@'+t.toFixed(2)); }
+        const s = __ct.pose(t); if (!s.valid) continue;
+        ['Q','R','B','C','P','D'].forEach(k => chk(__ct.rotPt(s[k]), k+'@'+t.toFixed(2)));
+      }
       const p = __ct.pose(__ct.cfg.temp);
-      ['O2','O4','O6','anchor'].forEach(k => chk(p[k], k));
+      ['O2','O4','O6','anchor'].forEach(k => chk(__ct.rotPt(p[k]), k));
       return {worst, at}; })()""")
     assert over["worst"] < 0.005, over
-    print(f"envelope {bb['w']:.2f} x {bb['h']:.2f}in, contains path+mounts "
+    print(f"envelope {bb['w']:.2f} x {bb['h']:.2f}in, contains path+joints+mounts "
           f"(worst overshoot {over['worst']*1000:.2f} thou at {over['at']})")
 
     # must update DURING a drag, not just on release -- buildBBox runs before fitView,
@@ -424,7 +428,13 @@ with sync_playwright() as p:
     pg.wait_for_timeout(200)
     assert pg.is_checked("#showBox") is False, "box is OFF by default"
     off = pg.evaluate(probe)
+    # the box bounds the swept joints, so ticking it must also tick Inner curves --
+    # otherwise it measures things that aren't drawn
+    pg.uncheck("#ghost"); pg.wait_for_timeout(100)
     pg.check("#showBox"); pg.wait_for_timeout(300)
+    assert pg.is_checked("#ghost") is True and pg.evaluate("__ct.cfg.ghost") is True, \
+        "enabling the bounding box must enable inner curves"
+    print("enabling Bounding box also enables Inner curves")
     on = pg.evaluate(probe)
     assert on > 25 and off == 0, (on, off)
     pg.uncheck("#showBox"); pg.wait_for_timeout(300)
@@ -467,11 +477,37 @@ with sync_playwright() as p:
         # counterclockwise turn DECREASES the angle -- hence -a, not +a.
         want = ((-a + 180) % 360) - 180
         assert abs(((got - want + 540) % 360) - 180) < 0.5, (a, got, want)
-        bb = pg.evaluate("__ct.bbox")
-        # rotating is a view change only -- real dimensions must not move
-        assert abs(bb["w"]-bb0["w"]) < 1e-9 and abs(bb["h"]-bb0["h"]) < 1e-9, (a, bb)
-    print(f"rotation turns the view at every step; envelope stays "
-          f"{bb0['w']:.2f} x {bb0['h']:.2f}in")
+    print("rotation turns the view at every step")
+
+    # The box is square to the SCREEN, so its w/h are the footprint at the current
+    # orientation and DO change as you rotate -- that is what it is for. At 90 degrees
+    # they must simply swap.
+    # back to the shipped defaults first. Reset restores geo and rotation but NOT the
+    # excursion, and section 4's undo test leaves extMax at 12in -- which shrinks how
+    # far every joint sweeps, so the footprint would be measured for the wrong stroke.
+    pg.click("#reset"); pg.wait_for_timeout(200)
+    pg.evaluate("document.querySelectorAll('details').forEach(d => d.open = true)")
+    pg.fill("#extMin", "0");    pg.dispatch_event("#extMin", "change")
+    pg.fill("#extMax", "15.5"); pg.dispatch_event("#extMax", "change")
+    pg.wait_for_timeout(250)
+    setrot(0);  sq = pg.evaluate("__ct.bbox")
+    setrot(90); rot90 = pg.evaluate("__ct.bbox")
+    assert abs(rot90["w"] - sq["h"]) < 1e-6 and abs(rot90["h"] - sq["w"]) < 1e-6, (sq, rot90)
+    # and at 0 it must equal an independently computed world extent
+    manual = pg.evaluate("""(() => {
+      let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
+      const add=p=>{if(!p)return;
+        x0=Math.min(x0,p.x);y0=Math.min(y0,p.y);x1=Math.max(x1,p.x);y1=Math.max(y1,p.y);};
+      __ct.chunks.forEach(c => c.pts.forEach(add));          // the path
+      const J = __ct.pathJ;                                  // every swept joint
+      Object.keys(J).forEach(k => J[k].forEach(add));
+      const q = __ct.pose(__ct.cfg.temp);
+      ['O2','O4','O6','anchor'].forEach(k => add(q[k]));     // the fixed mounts
+      return {w:x1-x0, h:y1-y0}; })()""")
+    setrot(0)
+    assert abs(sq["w"]-manual["w"]) < 1e-9 and abs(sq["h"]-manual["h"]) < 1e-9, (sq, manual)
+    print(f"footprint {sq['w']:.2f} x {sq['h']:.2f}in square-on, swaps to "
+          f"{rot90['w']:.2f} x {rot90['h']:.2f}in at 90 degrees")
 
     # worldOf must invert the rotation, or grabbed pivots drift away from the cursor.
     # Measured MID-drag: releasing refits the view and would mask the result.
@@ -504,6 +540,30 @@ with sync_playwright() as p:
     assert pg.evaluate("__ct.cfg.rot") == 120, pg.evaluate("__ct.cfg.rot")
     print("Reset zeroes rotation; undo restores it")
     setrot(0)
+
+    # ---- 6d. mouse wheel zoom --------------------------------------------
+    pg.mouse.dblclick(700, 500); pg.wait_for_timeout(200)
+    assert pg.evaluate("__ct.zoom") == 1
+    pg.mouse.move(700, 500); pg.mouse.wheel(0, -300); pg.wait_for_timeout(150)
+    zin = pg.evaluate("__ct.zoom")
+    assert zin > 1, f"wheel FORWARD must zoom IN, got {zin}"
+    pg.mouse.wheel(0, 600); pg.wait_for_timeout(150)
+    zout = pg.evaluate("__ct.zoom")
+    assert zout < zin, f"wheel back must zoom out, got {zout}"
+    print(f"wheel: forward -> {zin:.2f}x in, back -> {zout:.2f}x")
+
+    # zoom is anchored on the cursor: the point under the pointer must not move
+    for step in (-240, -240, 180):
+        q = pg.evaluate("__ct.pivotScreen('O4')")
+        pg.mouse.move(q["x"], q["y"]); pg.mouse.wheel(0, step); pg.wait_for_timeout(120)
+        q2 = pg.evaluate("__ct.pivotScreen('O4')")
+        d = math.hypot(q2["x"]-q["x"], q2["y"]-q["y"])
+        assert d < 1.5, f"cursor anchor drifted {d}px at wheel {step}"
+    print("wheel zoom is cursor-anchored (point under pointer holds within 1.5px)")
+
+    pg.mouse.dblclick(700, 500); pg.wait_for_timeout(200)
+    assert pg.evaluate("__ct.zoom") == 1 and pg.evaluate("__ct.pan.x") == 0
+    print("double-click resets zoom and pan")
 
     # ---- 7. actuator rod end has an inner curve --------------------------
     assert pg.evaluate("Object.keys(__ct.pathJ)").count("R") == 1
