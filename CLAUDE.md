@@ -21,7 +21,8 @@ unrelated FABRIK inverse-kinematics demo kept for reference.
   These are hard physical constants — `ACT={lmin:24, stroke:18}` in the code.
 - The usable slice of stroke is configurable ("excursion min/max" fields,
   inches of extension 0–18) so the build can avoid end-stops.
-- Large freestanding garden piece; the serpentine preset spans roughly 4–5 ft.
+- Large freestanding garden piece; the serpentine preset's overall envelope
+  (scale curve plus all four mounts) is roughly 37″ × 19″.
 
 ## Design requirements established so far
 
@@ -34,7 +35,8 @@ unrelated FABRIK inverse-kinematics demo kept for reference.
    formally: every mount keeps ≥2.5″ clearance from the curve, and the
    straight segment between any two mounts never crosses the curve.
 4. The owner's chosen design is the **Serpentine** preset (S-curve with
-   end hook). Grand Arc is the alternate. Both were found by random search
+   end hook), since hand-tuned — see the preset section. Grand Arc is the
+   alternate. The original presets were found by random search
    (~10^5–10^6 trials) in Python subject to: assembles across full stroke
    with margin, every temperature step moves visibly (min segment 0.15″,
    max 2.2″, speed ratio ≤7), genuine curvature, and the mount rule above.
@@ -44,9 +46,17 @@ unrelated FABRIK inverse-kinematics demo kept for reference.
 
 ## Preset geometries (inches, O2-origin)
 
-Serpentine (CHOSEN): rA=12.8 dA=33.1 anch=-127.2° | stage1: gx=12.9 gy=-6.0
-L2=11.4 L3=11.2 L4=9.6 cu=3.5 cv=11.3 s1=-1 | stage2: ox=8.1 oy=-12.0
-L5=5.9 L6=14.0 cu2=14.6 cv2=3.6 s2=-1  → 37″ of scale, ~6.8× speed ratio.
+Serpentine (CHOSEN): rA=12.8 dA=29.15 anch=-145.97° | stage1: gx=12.9 gy=-6.0
+L2=11.4 L3=10.4 L4=9.6 cu=3.5 cv=11.3 s1=-1 | stage2: ox=6.30 oy=-16.71
+L5=5.9 L6=14.0 cu2=14.6 cv2=3.6 s2=-1  → 41.4″ of scale, ~32× speed ratio.
+
+Owner-tuned by dragging on 2026-07-19; replaced the earlier search result
+(dA=33.1 anch=-127.2 L3=11.2 ox=8.1 oy=-12.0 → 37″, 6.8×). Assembles over
+the full excursion (0–17″), but note it does NOT satisfy the original search
+constraints: 10°F steps run 1.38″ (at 0–10°F) to 8.07″ (at 80–90°F), so both
+the 2.2″ max-segment and ≤7× speed-ratio rules are exceeded. Accepted as a
+deliberate aesthetic choice, not a search product — re-confirm before
+generating fabrication output.
 
 Grand Arc: rA=20.8 dA=31.7 anch=166.7° gx=-3.8 gy=-0.1 L2=11.9 L3=11.8
 L4=12.6 cu=19.6 cv=-5.2 s1=-1 ox=7.7 oy=-7.6 L5=8.5 L6=13.5 cu2=19.3
