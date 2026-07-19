@@ -45,9 +45,9 @@
   input[type=range].temp::-moz-range-thumb{background:var(--accent2);}
   select{width:100%;background:#10151d;color:var(--text);border:1px solid var(--border);
     border-radius:9px;padding:8px;font-size:12px;font-weight:600;}
-  input[type=number]{width:100%;background:#10151d;color:var(--text);border:1px solid var(--border);
+  input[type=number],input[type=text]{width:100%;background:#10151d;color:var(--text);border:1px solid var(--border);
     border-radius:9px;padding:7px 9px;font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;}
-  input[type=number]:focus{outline:none;border-color:var(--accent2);}
+  input[type=number]:focus,input[type=text]:focus{outline:none;border-color:var(--accent2);}
   .pair{display:flex;gap:8px;}
   .pair>div{flex:1;}
   .pair label{display:block;font-size:11px;color:var(--muted);margin-bottom:5px;}
@@ -63,10 +63,10 @@
   .stat{background:#10151d;border:1px solid var(--border);border-radius:10px;padding:7px 10px;}
   .stat .k{font-size:9px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);}
   .stat .v{font-size:14px;font-weight:700;font-variant-numeric:tabular-nums;margin-top:2px;}
-  #tmsg,#smsg{font-size:11px;margin-top:8px;padding:7px 9px;border-radius:8px;line-height:1.35;display:none;}
-  #tmsg.bad,#smsg.bad{display:block;background:rgba(239,83,80,.12);color:var(--bad);border:1px solid rgba(239,83,80,.35);}
-  #tmsg.ok,#smsg.ok{display:block;background:rgba(79,209,197,.1);color:var(--accent2);border:1px solid rgba(79,209,197,.28);}
-  #smsg.warn{display:block;background:rgba(242,193,78,.12);color:var(--warn);border:1px solid rgba(242,193,78,.3);}
+  #tmsg,#smsg,#emsg{font-size:11px;margin-top:8px;padding:7px 9px;border-radius:8px;line-height:1.35;display:none;}
+  #tmsg.bad,#smsg.bad,#emsg.bad{display:block;background:rgba(239,83,80,.12);color:var(--bad);border:1px solid rgba(239,83,80,.35);}
+  #tmsg.ok,#smsg.ok,#emsg.ok{display:block;background:rgba(79,209,197,.1);color:var(--accent2);border:1px solid rgba(79,209,197,.28);}
+  #smsg.warn,#emsg.warn{display:block;background:rgba(242,193,78,.12);color:var(--warn);border:1px solid rgba(242,193,78,.3);}
 
   #tip{position:fixed;pointer-events:none;z-index:8;display:none;max-width:230px;
     background:rgba(22,27,36,.97);border:1px solid rgba(246,168,51,.55);border-radius:10px;
@@ -166,11 +166,27 @@
   </details>
 
   <div class="sec">Saved settings</div>
-  <div class="btns" style="margin-top:6px;">
+  <div class="row" style="margin-top:6px;">
+    <input type="text" id="sname" placeholder="Design name (optional)" autocomplete="off">
+  </div>
+  <select id="sload"><option value="">Load a saved design…</option></select>
+  <div class="btns" style="margin-top:8px;">
     <button class="primary" id="save">Save</button>
+    <button id="del">Delete</button>
     <button id="clear">Clear saved</button>
   </div>
   <div id="smsg"></div>
+
+  <div class="sec">Export for Fusion (DXF)</div>
+  <div class="row pair">
+    <div><label>Pivot hole ⌀ ″</label><input type="number" id="hole" value="0.375" step="0.0625" min="0.0625" max="2"></div>
+    <div><label>Link width ″</label><input type="number" id="lwid" value="1.5" step="0.25" min="0.5" max="6"></div>
+  </div>
+  <div class="btns" style="margin-top:8px;">
+    <button class="primary" id="expParts">Parts DXF</button>
+    <button id="expPoints">Points DXF</button>
+  </div>
+  <div id="emsg"></div>
 
   <div class="btns">
     <button class="primary" id="reset">Reset preset</button>
@@ -202,7 +218,8 @@
 
   const geo=Object.assign({}, PRESETS.serpentine);
   const cfg={temp:70, tmin:-20, tmax:110, demo:true, reveal:true, ticks:true, ghost:true, speed:0.1, tdir:false,
-             extMin:0, extMax:17};     // used slice of the actuator stroke, in inches of extension
+             extMin:0, extMax:17,      // used slice of the actuator stroke, in inches of extension
+             hole:0.375, lwid:1.5};    // fabrication: pivot hole ⌀ and link stock width, inches
   // actuator stroke envelope (pin-to-pin): 24″ retracted + 18″ stroke = 42″ extended
   const ACT={lmin:24, stroke:18};
   let demoT=0.35;
@@ -583,6 +600,14 @@
     cfg.extMax=v; e.target.value=v;
     rebuildPath();
   });
+  // export-only dimensions — no redraw needed
+  [['hole',0.0625,2],['lwid',0.5,6]].forEach(([id,lo,hi])=>{
+    document.getElementById(id).addEventListener('change',e=>{
+      let v=parseFloat(e.target.value);
+      cfg[id]=isFinite(v)?clamp(v,lo,hi):cfg[id];
+      e.target.value=cfg[id];
+    });
+  });
   document.getElementById('tdir').addEventListener('change',e=>{
     cfg.tdir=e.target.checked;
     rebuildPath();                     // temp→position mapping flips; re-lay ticks & colors
@@ -607,6 +632,8 @@
     document.getElementById('tmax').value=cfg.tmax;
     document.getElementById('extMin').value=cfg.extMin;
     document.getElementById('extMax').value=cfg.extMax;
+    document.getElementById('hole').value=cfg.hole;
+    document.getElementById('lwid').value=cfg.lwid;
     const tsl=document.getElementById('temp');
     tsl.min=cfg.tmin; tsl.max=cfg.tmax;
     document.getElementById('temp').value=cfg.temp;
@@ -615,16 +642,51 @@
     document.getElementById('speedV').textContent=(+cfg.speed).toFixed(1)+'×';
     ['demo','reveal','ticks','ghost','tdir'].forEach(k=>document.getElementById(k).checked=!!cfg[k]);
   }
+  // named designs live in one map under SAVESKEY; LSKEY stays the auto-restore slot
+  const SAVESKEY='couplerThermometer.saves';
+  let memSaves={};
+  function readSaves(){
+    try{ return JSON.parse(localStorage.getItem(SAVESKEY))||{}; }catch(e){ return memSaves; }
+  }
+  function writeSaves(o){
+    memSaves=o;
+    try{ localStorage.setItem(SAVESKEY, JSON.stringify(o)); return true; }catch(e){ return false; }
+  }
+  function refreshSaveList(sel){
+    const el=document.getElementById('sload');
+    el.length=1;                                    // keep the placeholder option
+    Object.keys(readSaves()).sort().forEach(n=>el.add(new Option(n,n)));
+    el.value=sel||'';
+  }
+  function snapshot(){
+    return {geo:Object.assign({},geo), cfg:Object.assign({},cfg),
+            preset:document.getElementById('preset').value};
+  }
+  function applyData(data){
+    if(!data||!data.geo||!data.cfg) return false;
+    Object.keys(geo).forEach(k=>{ if(typeof data.geo[k]==='number') geo[k]=data.geo[k]; });
+    ['temp','tmin','tmax','speed','extMin','extMax','hole','lwid'].forEach(k=>{ if(typeof data.cfg[k]==='number') cfg[k]=data.cfg[k]; });
+    cfg.speed=clamp(cfg.speed,0.05,1);
+    cfg.extMin=clamp(cfg.extMin,0,17); cfg.extMax=clamp(cfg.extMax,cfg.extMin+1,18);
+    cfg.hole=clamp(cfg.hole,0.0625,2); cfg.lwid=clamp(cfg.lwid,0.5,6);
+    ['demo','reveal','ticks','ghost','tdir'].forEach(k=>{ if(typeof data.cfg[k]==='boolean') cfg[k]=data.cfg[k]; });
+    if(data.preset) document.getElementById('preset').value=data.preset;
+    syncUI();
+    return true;
+  }
   function saveSettings(){
-    const data={geo:Object.assign({},geo), cfg:Object.assign({},cfg),
-                preset:document.getElementById('preset').value};
-    try{
-      localStorage.setItem(LSKEY, JSON.stringify(data));
-      showSaveMsg('ok','Saved ✓ — restores automatically next time this page opens.');
-    }catch(e){
-      memStore=data;
-      showSaveMsg('warn','Browser storage is blocked here — settings kept for this session only. Open the downloaded file directly in a browser to persist.');
+    const name=document.getElementById('sname').value.trim();
+    const data=snapshot();
+    let stored=true;
+    try{ localStorage.setItem(LSKEY, JSON.stringify(data)); }catch(e){ memStore=data; stored=false; }
+    if(name){
+      const s=readSaves(); s[name]=data;
+      stored=writeSaves(s)&&stored;
+      refreshSaveList(name);
     }
+    if(!stored) showSaveMsg('warn','Browser storage is blocked here — kept for this session only. Open the file directly (not through a sandboxed viewer) to persist.');
+    else if(name) showSaveMsg('ok','Saved as “'+name+'” ✓ — also restores automatically next time.');
+    else showSaveMsg('ok','Saved ✓ — restores automatically. Type a name to keep it as a separate design.');
   }
   function loadSettings(){
     let data=null;
@@ -632,24 +694,186 @@
       const raw=localStorage.getItem(LSKEY);
       if(raw) data=JSON.parse(raw);
     }catch(e){ data=memStore; }
-    if(!data||!data.geo||!data.cfg) return false;
-    Object.keys(geo).forEach(k=>{ if(typeof data.geo[k]==='number') geo[k]=data.geo[k]; });
-    ['temp','tmin','tmax','speed','extMin','extMax'].forEach(k=>{ if(typeof data.cfg[k]==='number') cfg[k]=data.cfg[k]; });
-    cfg.speed=clamp(cfg.speed,0.05,1);
-    cfg.extMin=clamp(cfg.extMin,0,17); cfg.extMax=clamp(cfg.extMax,cfg.extMin+1,18);
-    ['demo','reveal','ticks','ghost','tdir'].forEach(k=>{ if(typeof data.cfg[k]==='boolean') cfg[k]=data.cfg[k]; });
-    if(data.preset) document.getElementById('preset').value=data.preset;
-    syncUI();
+    if(!applyData(data)) return false;
     showSaveMsg('ok','Restored saved settings ✓');
     return true;
   }
   function clearSettings(){
     try{ localStorage.removeItem(LSKEY); }catch(e){}
     memStore=null;
-    showSaveMsg('ok','Saved settings cleared — presets will load fresh next time.');
+    showSaveMsg('ok','Auto-restore cleared — presets load fresh next time. Named designs are kept.');
+  }
+  function deleteSave(){
+    const name=document.getElementById('sname').value.trim();
+    const s=readSaves();
+    if(!name||!(name in s)){ showSaveMsg('warn','No saved design named “'+(name||'')+'”.'); return; }
+    delete s[name]; writeSaves(s); refreshSaveList('');
+    showSaveMsg('ok','Deleted “'+name+'”.');
   }
   document.getElementById('save').addEventListener('click',saveSettings);
   document.getElementById('clear').addEventListener('click',clearSettings);
+  document.getElementById('del').addEventListener('click',deleteSave);
+  document.getElementById('sload').addEventListener('change',e=>{
+    const name=e.target.value; if(!name) return;
+    if(applyData(readSaves()[name])){
+      document.getElementById('sname').value=name;
+      rebuildPath();
+      showSaveMsg('ok','Loaded “'+name+'” ✓');
+    }
+  });
+
+  // ---------- DXF export ----------
+  // R12 ASCII, inches. Only LINE / CIRCLE / ARC / TEXT — the entity set every CAD reads.
+  // Canvas y is down; every point is flipped to y-up BEFORE it reaches an emitter, so the
+  // arc winding below stays honest. ponytail: curves go out as line segments, not splines —
+  // fit a spline in Fusion if you want one entity.
+  const F=(x,y)=>({x:x, y:-y});                    // sim/screen coords -> CAD coords
+  const DXF={
+    start(){ this.E=[]; this.lay=new Set(); },
+    n(v){ return (Math.round(v*1e6)/1e6).toString(); },
+    L(l){ this.lay.add(l); return l; },
+    line(l,a,b){ this.E.push('0','LINE','8',this.L(l),'10',this.n(a.x),'20',this.n(a.y),'30','0',
+                                              '11',this.n(b.x),'21',this.n(b.y),'31','0'); },
+    circle(l,c,r){ this.E.push('0','CIRCLE','8',this.L(l),'10',this.n(c.x),'20',this.n(c.y),'30','0','40',this.n(r)); },
+    arc(l,c,r,a0,a1){ this.E.push('0','ARC','8',this.L(l),'10',this.n(c.x),'20',this.n(c.y),'30','0','40',this.n(r),
+                                  '50',this.n(a0),'51',this.n(a1)); },      // DXF arcs always run CCW
+    point(l,p){ this.E.push('0','POINT','8',this.L(l),'10',this.n(p.x),'20',this.n(p.y),'30','0'); },
+    text(l,p,h,s){ this.E.push('0','TEXT','8',this.L(l),'10',this.n(p.x),'20',this.n(p.y),'30','0',
+                               '40',this.n(h),'1',String(s)); },
+    doc(){
+      const lay=[...this.lay];
+      const out=['0','SECTION','2','HEADER','9','$ACADVER','1','AC1009','9','$INSUNITS','70','1','0','ENDSEC',
+                 '0','SECTION','2','TABLES','0','TABLE','2','LAYER','70',String(lay.length)];
+      lay.forEach(l=>out.push('0','LAYER','2',l,'70','0','62','7','6','CONTINUOUS'));
+      out.push('0','ENDTAB','0','ENDSEC','0','SECTION','2','ENTITIES');
+      return out.concat(this.E,['0','ENDSEC','0','EOF']).join('\r\n')+'\r\n';
+    }
+  };
+  // convex hull of 2–3 points, CCW; collinear triples collapse to their two extremes
+  function hull3(pts){
+    if(pts.length<3) return pts.slice();
+    const [a,b,c]=pts;
+    const cr=(b.x-a.x)*(c.y-a.y)-(b.y-a.y)*(c.x-a.x);
+    if(Math.abs(cr)>1e-9) return cr>0?[a,b,c]:[a,c,b];
+    let best=[a,b], bd=-1;
+    [[a,b],[a,c],[b,c]].forEach(pr=>{
+      const d=Math.hypot(pr[0].x-pr[1].x, pr[0].y-pr[1].y);
+      if(d>bd){bd=d;best=pr;}
+    });
+    return best;
+  }
+  // part outline = convex hull of equal-radius circles at each hole: offset edges + corner arcs.
+  // With 2 hull points the same loop walks out and back, giving a capsule.
+  function outline(layer,pts,w){
+    const H=hull3(pts), n=H.length, nv=[];
+    for(let i=0;i<n;i++){
+      const a=H[i], b=H[(i+1)%n];
+      const dx=b.x-a.x, dy=b.y-a.y, L=Math.hypot(dx,dy)||1;
+      nv.push({x:dy/L, y:-dx/L});                  // outward normal for a CCW loop
+    }
+    for(let i=0;i<n;i++){
+      const a=H[i], b=H[(i+1)%n], m=nv[i], m2=nv[(i+1)%n];
+      DXF.line(layer,{x:a.x+m.x*w, y:a.y+m.y*w},{x:b.x+m.x*w, y:b.y+m.y*w});
+      DXF.arc(layer,b,w, Math.atan2(m.y,m.x)/DEG, Math.atan2(m2.y,m2.x)/DEG);
+    }
+  }
+  // each link in its own local frame, first hole at the origin, second along +X
+  function partDefs(){
+    return [
+      {name:'CRANK',   holes:[F(0,0), F(geo.L2,0), F(geo.rA,0)],       labels:['O2','B','R']},
+      {name:'PLATE1',  holes:[F(0,0), F(geo.L3,0), F(geo.cu,geo.cv)],  labels:['B','C','P']},
+      {name:'ROCKER1', holes:[F(0,0), F(geo.L4,0)],                    labels:['O4','C']},
+      {name:'PLATE2',  holes:[F(0,0), F(geo.L5,0), F(geo.cu2,geo.cv2)],labels:['P','D','Q']},
+      {name:'ROCKER2', holes:[F(0,0), F(geo.L6,0)],                    labels:['O6','D']}
+    ];
+  }
+  function buildParts(){
+    DXF.start();
+    const w=cfg.lwid/2, hr=cfg.hole/2;
+    let cx=0;
+    partDefs().forEach(pd=>{
+      const xs=pd.holes.map(p=>p.x), ys=pd.holes.map(p=>p.y);
+      const x0=Math.min(...xs), x1=Math.max(...xs), y0=Math.min(...ys);
+      const dx=cx-(x0-w);                          // lay parts out left to right, no overlap
+      const pts=pd.holes.map(p=>({x:p.x+dx, y:p.y}));
+      outline(pd.name, pts, w);
+      pts.forEach((p,i)=>{
+        DXF.circle(pd.name, p, hr);
+        DXF.text('LABELS',{x:p.x+hr+0.12, y:p.y+0.08}, 0.22, pd.labels[i]);
+      });
+      DXF.text('LABELS',{x:cx, y:y0-w-0.75}, 0.3, pd.name);
+      cx += (x1-x0) + 2*w + 2;
+    });
+    return DXF.doc();
+  }
+  function buildPoints(){
+    DXF.start();
+    const f=p=>F(p.x,p.y);
+    for(let i=1;i<=NSAMP;i++)
+      if(pathQ[i]&&pathQ[i-1]) DXF.line('SCALE_CURVE', f(pathQ[i-1]), f(pathQ[i]));
+    // ticks: equal temperature steps, so unequal spacing along the curve — that is the design
+    const OFF=0.25, MAJ=0.75, MIN=0.4;             // inches off the curve
+    for(let t=Math.ceil(cfg.tmin/5)*5; t<=cfg.tmax; t+=5){
+      const i=clamp(Math.round((t-cfg.tmin)/(cfg.tmax-cfg.tmin)*NSAMP),1,NSAMP-1);
+      if(!pathQ[i]||!pathQ[i-1]||!pathQ[i+1]) continue;
+      const a=f(pathQ[i-1]), b=f(pathQ[i+1]), q=f(pathQ[i]);
+      const tl=Math.hypot(b.x-a.x,b.y-a.y)||1;
+      const nx=-(b.y-a.y)/tl, ny=(b.x-a.x)/tl;
+      const big=(t%10===0), len=big?MAJ:MIN;
+      DXF.line(big?'TICKS_MAJOR':'TICKS_MINOR',
+               {x:q.x+nx*OFF, y:q.y+ny*OFF}, {x:q.x+nx*(OFF+len), y:q.y+ny*(OFF+len)});
+      if(big){
+        DXF.point('POINTS', q);                    // snap target: exact indicator position at this temp
+        DXF.text('LABELS',{x:q.x+nx*(OFF+len+0.28)-0.18, y:q.y+ny*(OFF+len+0.28)-0.11}, 0.28, t+'F');
+      }
+    }
+    const p=pose(cfg.temp);
+    [['O2',p.O2],['O4_ROCKER1',p.O4],['O6_ROCKER2',p.O6],['ACT_ANCHOR',p.anchor]].forEach(m=>{
+      if(!m[1]) return;
+      const q=f(m[1]);
+      DXF.point('POINTS', q);
+      DXF.circle('MOUNTS', q, cfg.hole/2);
+      DXF.circle('MOUNTS', q, cfg.hole/2+0.2);
+      DXF.text('LABELS',{x:q.x+cfg.hole/2+0.32, y:q.y+0.1}, 0.28, m[0]);
+    });
+    return DXF.doc();
+  }
+  function showExpMsg(cls,txt){
+    const m=document.getElementById('emsg');
+    m.className=cls; m.textContent=txt;
+    clearTimeout(showExpMsg._t);
+    showExpMsg._t=setTimeout(()=>{m.className='';},7000);
+  }
+  async function saveFile(name,text){
+    const blob=new Blob([text],{type:'application/dxf'});
+    if(window.showSaveFilePicker){                 // real Save dialog where the browser has one
+      try{
+        const h=await window.showSaveFilePicker({suggestedName:name,
+          types:[{description:'DXF drawing', accept:{'application/dxf':['.dxf']}}]});
+        const w=await h.createWritable(); await w.write(blob); await w.close();
+        return h.name;
+      }catch(e){ if(e.name==='AbortError') return null; }   // cancelled, or picker blocked -> fall through
+    }
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob); a.download=name; a.click();
+    setTimeout(()=>URL.revokeObjectURL(a.href),2000);
+    return name;
+  }
+  function baseName(){
+    const n=document.getElementById('sname').value.trim() || document.getElementById('preset').value;
+    return n.replace(/[^\w.-]+/g,'_');
+  }
+  document.getElementById('expParts').addEventListener('click',async()=>{
+    const f=await saveFile(baseName()+'-parts.dxf', buildParts());
+    if(f) showExpMsg('ok','Wrote '+f+' — 5 links, one layer each, flat and laid out side by side. '
+      +cfg.lwid.toFixed(2)+'″ wide stock, '+cfg.hole.toFixed(3)+'″ holes. Import as inches.');
+  });
+  document.getElementById('expPoints').addEventListener('click',async()=>{
+    const f=await saveFile(baseName()+'-points.dxf', buildPoints());
+    if(f) showExpMsg(pathValid?'ok':'warn',
+      (pathValid?'':'⚠ Linkage does not assemble over the whole range — the curve is incomplete. ')
+      +'Wrote '+f+' — scale curve, 5°/10° ticks, the 4 mounts, and POINT entities to snap to. Import as inches.');
+  });
 
   // ---------- draggable mounts & hover labels ----------
   let dragPivot=null, hoverPivot=null, hoverCompId=null, lastWorld=null;
@@ -855,7 +1079,7 @@
   // small debug/testing hook
   window.__ct={
     pivotScreen:n=>{const p=pose(cfg.temp); return TX(pivotPos(n,p));},
-    geo, cfg
+    geo, cfg, buildParts, buildPoints
   };
   document.getElementById('preset').addEventListener('change',e=>{
     const v=e.target.value;
@@ -879,6 +1103,7 @@
   }
   window.addEventListener('resize',resize);
   syncSliders();
+  refreshSaveList();
   loadSettings();
   resize();
   frame();

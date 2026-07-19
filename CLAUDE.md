@@ -63,6 +63,8 @@ L4=12.6 cu=19.6 cv=-5.2 s1=-1 ox=7.7 oy=-7.6 L5=8.5 L6=13.5 cu2=19.3
 cv2=-12.0 s2=-1  → ~66″ of scale.
 
 `tools/search_geometry.py` reproduces the constrained random search.
+`tools/verify_export.py` drives the page headless and checks the named-save
+flow plus both DXF exports (`python3 tools/verify_export.py [outdir]`).
 
 ## How the solver works (index.html, ~pose())
 
@@ -98,8 +100,28 @@ cv2=-12.0 s2=-1  → ~66″ of scale.
 - Settings persist to localStorage key `couplerThermometer.v2` (guarded
   try/catch — degrades to in-memory where storage is blocked). Save /
   Clear saved buttons; auto-restore on load.
+- **Named designs**: type a name before Save and it also goes into the map
+  under `couplerThermometer.saves`; the "Load a saved design…" dropdown
+  restores one, Delete removes the named entry. Saving with the name field
+  empty still updates the auto-restore slot. "Clear saved" only clears
+  auto-restore — it leaves named designs alone.
+- **DXF export for Fusion** (two buttons, R12 ASCII, inches, y flipped to
+  CAD convention). `showSaveFilePicker` gives a real Save dialog where the
+  browser has one, else it falls back to an `<a download>`:
+  - *Parts DXF* — the 5 fabricated links, each flat in its own local frame
+    on its own layer (CRANK / PLATE1 / ROCKER1 / PLATE2 / ROCKER2), laid
+    out side by side without overlap. Outline = convex hull of equal-radius
+    circles at each hole (offset edges + corner arcs), so 2-hole links come
+    out as capsules and 3-hole plates as rounded triangles. Driven by the
+    "Pivot hole ⌀" and "Link width" fields (`cfg.hole` / `cfg.lwid`).
+  - *Points DXF* — the assembly frame: scale curve as line segments, 5°/10°
+    ticks with °F labels, the 4 mounts, and POINT entities at every 10°
+    tick and mount to snap to.
+  Curves are line segments, not splines — fit a spline in Fusion if wanted.
 - Public view: uncheck "Show mechanism" — only scale + indicator bead.
-- Debug hook for tests: `window.__ct` = {pivotScreen(name), geo, cfg}.
+- Debug hook for tests: `window.__ct` = {pivotScreen(name), geo, cfg,
+  buildParts(), buildPoints()} — the two builders return DXF text, so tests
+  can assert on the export without going through the download.
 
 ## Verification pattern used throughout
 
@@ -111,10 +133,12 @@ persistence tests, screenshot and inspect. Keep doing this for changes.
 ## Known open items / next steps
 
 1. **Fabrication document** (owner has asked for this "when design is
-   final"): dimensioned drawing data — mount coordinates on a common frame,
-   link lengths, coupler-plate geometry (B/C/P and P/D/Q triangles with
-   cu/cv offsets), actuator mounting triangle, pivot hardware suggestions,
-   plus the temp→extension calibration table for the controller.
+   final"): the DXF export now covers the drawing side — link outlines and
+   mount coordinates on a common frame. Still missing: pivot hardware
+   suggestions, actuator mounting-triangle detail, and the temp→extension
+   calibration table for the controller. Note the exports read the CURRENT
+   geo, and the chosen Serpentine preset still violates the original search
+   constraints (see the preset section) — re-confirm before cutting metal.
 2. **.linkage2 export** — write the chosen geometry as XML for David
    Rector's Linkage program (Windows; blog.rectorsquid.com). Not started.
 3. Unresolved question: owner once asked for "beginning and ending point
