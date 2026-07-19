@@ -7,6 +7,9 @@ point — crawls along the serpentine curve it traces. The temperature scale
 is engraved along that curve, with equal temperature steps landing at
 unequal spacing. Viewers are meant to puzzle over how it works.
 
+![The design simulator: actuator, bell crank, two four-bar linkages, and the
+temperature scale traced by the stage-2 coupler point](images/index.png)
+
 ## Files
 
 - `index.html` — the interactive design simulator. Open in any browser.
