@@ -129,6 +129,7 @@
   <div class="checks">
     <label class="chk"><input type="checkbox" id="ticks" checked> Scale ticks</label>
     <label class="chk"><input type="checkbox" id="ghost" checked> Inner curves</label>
+    <label class="chk"><input type="checkbox" id="showBox" checked> Bounding box</label>
   </div>
 
   <details class="fold">
@@ -221,7 +222,7 @@
   };
 
   const geo=Object.assign({}, PRESETS.serpentine);
-  const cfg={temp:70, tmin:-20, tmax:110, demo:true, reveal:true, ticks:true, ghost:true, speed:0.1, tdir:false,
+  const cfg={temp:70, tmin:-20, tmax:110, demo:true, reveal:true, ticks:true, ghost:true, showBox:true, speed:0.1, tdir:false,
              extMin:0, extMax:15.5,    // used slice of the actuator stroke, in inches of extension
                                        // 15.5 is near the ceiling for the serpentine preset:
                                        // dA+rA=40.15, so past ~15.65″ the drive triangle won't close
@@ -276,7 +277,7 @@
 
   // ---------- path cache ----------
   const NSAMP=140;
-  let pathQ=[], pathJ={R:[],B:[],C:[],P:[],D:[]}, pathValid=true, pathWhy=null, pathLen=0, speedRatio=1, view={s:1,ox:0,oy:0}, tickCache=[], pathChunks=[];
+  let pathQ=[], pathJ={R:[],B:[],C:[],P:[],D:[]}, pathValid=true, pathWhy=null, pathLen=0, speedRatio=1, view={s:1,ox:0,oy:0}, tickCache=[], pathChunks=[], bbox=null;
   // One chunk per whole degree, each sampled finely enough to stay smooth where the path
   // moves fastest. Boundaries fall exactly on integer temperatures — that is what puts the
   // divisions on the tick marks. Cached with the path, not rebuilt per frame.
@@ -319,7 +320,38 @@
     pathLen=len; speedRatio=(mn>1e-9)?mx/mn:0;
     tickCache=tickList();              // only changes with geo/range, so not per frame
     pathChunks=buildChunks();
+    bbox=buildBBox();                  // before fitView: must update live during a drag
     fitView();
+  }
+  // Overall envelope of the built piece: the path plus the four fixed mounts — the same
+  // definition the owner uses for "37″ × 19″". Recomputed with the path, NOT gated on
+  // dragPivot the way fitView is, so the numbers track live while a mount is dragged.
+  // Everything here is inside fitView's bounds, so the box is always on screen.
+  function buildBBox(){
+    let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
+    const add=p=>{if(!p)return; x0=Math.min(x0,p.x);y0=Math.min(y0,p.y);x1=Math.max(x1,p.x);y1=Math.max(y1,p.y);};
+    // pathChunks, not pathQ: pathQ's 140 samples sit ~0.93° apart and miss the extremes
+    // where the path turns, notably the loop tip near 47°F. Chunks are 6× finer.
+    pathChunks.forEach(c=>c.pts.forEach(add));
+    const p=pose(cfg.temp);            // mounts are fixed, so any pose gives the same four
+    ['O2','O4','O6','anchor'].forEach(k=>add(p[k]));
+    if(x0>x1) return null;
+    return {x0,y0,x1,y1,w:x1-x0,h:y1-y0};
+  }
+  function drawBBox(){
+    if(!bbox) return;
+    const a=TX({x:bbox.x0,y:bbox.y0}), b=TX({x:bbox.x1,y:bbox.y1});
+    ctx.save();
+    ctx.setLineDash([6,5]);
+    ctx.strokeStyle='rgba(138,148,166,.4)'; ctx.lineWidth=1;
+    ctx.strokeRect(a.x, a.y, b.x-a.x, b.y-a.y);
+    ctx.setLineDash([]);
+    ctx.fillStyle='rgba(159,176,195,.85)'; ctx.font='600 11px -apple-system,sans-serif';
+    ctx.textAlign='center'; ctx.textBaseline='bottom';
+    ctx.fillText(bbox.w.toFixed(1)+'″', (a.x+b.x)/2, a.y-5);
+    ctx.textAlign='right'; ctx.textBaseline='middle';
+    ctx.fillText(bbox.h.toFixed(1)+'″', a.x-6, (a.y+b.y)/2);
+    ctx.restore();
   }
   function fitView(){
     if(dragPivot) return;              // keep the view still while dragging a mount
@@ -354,6 +386,7 @@
     ctx.clearRect(0,0,W,H);
     const p=pose(cfg.temp);
 
+    if(cfg.showBox) drawBBox();
     drawScale();
     if(cfg.ghost) drawGhost();
     if(cfg.reveal) drawMechanism(p);
@@ -608,7 +641,7 @@
     cfg.demo=false; document.getElementById('demo').checked=false;
     document.getElementById('tempV').textContent=Math.round(cfg.temp)+'°F';
   });
-  ['demo','reveal','ticks','ghost'].forEach(k=>{
+  ['demo','reveal','ticks','ghost','showBox'].forEach(k=>{
     const el=document.getElementById(k);
     el.addEventListener('change',()=>cfg[k]=el.checked);
   });
@@ -688,7 +721,7 @@
     document.getElementById('tempV').textContent=Math.round(cfg.temp)+'°F';
     document.getElementById('speed').value=cfg.speed;
     document.getElementById('speedV').textContent=(+cfg.speed).toFixed(1)+'×';
-    ['demo','reveal','ticks','ghost','tdir'].forEach(k=>document.getElementById(k).checked=!!cfg[k]);
+    ['demo','reveal','ticks','ghost','showBox','tdir'].forEach(k=>document.getElementById(k).checked=!!cfg[k]);
   }
   // named designs live in one map under SAVESKEY; LSKEY stays the auto-restore slot
   const SAVESKEY='couplerThermometer.saves';
@@ -717,7 +750,7 @@
     cfg.speed=clamp(cfg.speed,0.05,1);
     cfg.extMin=clamp(cfg.extMin,0,17); cfg.extMax=clamp(cfg.extMax,cfg.extMin+1,18);
     cfg.hole=clamp(cfg.hole,0.0625,2); cfg.lwid=clamp(cfg.lwid,0.5,6);
-    ['demo','reveal','ticks','ghost','tdir'].forEach(k=>{ if(typeof data.cfg[k]==='boolean') cfg[k]=data.cfg[k]; });
+    ['demo','reveal','ticks','ghost','showBox','tdir'].forEach(k=>{ if(typeof data.cfg[k]==='boolean') cfg[k]=data.cfg[k]; });
     if(data.preset) document.getElementById('preset').value=data.preset;
     syncUI();
     return true;
@@ -1176,6 +1209,7 @@
     geo, cfg, buildParts, buildPoints, pan, pose, rebuild:()=>{syncUI();rebuildPath();},
     get ticks(){ return tickCache; },
     get chunks(){ return pathChunks; },
+    get bbox(){ return bbox; },
     undoDepth:()=>undoStack.length,
     get pathJ(){ return pathJ; },      // rebuildPath reassigns it, so read it live
     dump:()=>JSON.stringify({geo,cfg},null,1)

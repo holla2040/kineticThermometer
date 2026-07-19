@@ -323,6 +323,70 @@ with sync_playwright() as p:
     worst = min(a["nx"]*b["nx"] + a["ny"]*b["ny"] for a, b in zip(ticks, ticks[1:]))
     print(f"no tick-side flips across {len(ticks)} ticks (tightest turn: dot={worst:.3f})")
 
+    # ---- 6b. envelope bounding box ---------------------------------------
+    pg.select_option("#preset", "serpentine"); pg.wait_for_timeout(250)
+    bb = pg.evaluate("__ct.bbox")
+    # must contain the whole path and all four mounts. Scanned far finer than the box's
+    # own sampling -- pathQ's 140 samples miss the loop tip near 47F, which is why the
+    # box is built from pathChunks instead.
+    over = pg.evaluate("""(() => {
+      const b = __ct.bbox; let worst = 0, at = null;
+      const chk = (p, n) => { if (!p) return;
+        const d = Math.max(b.x0-p.x, p.x-b.x1, b.y0-p.y, p.y-b.y1);
+        if (d > worst) { worst = d; at = n; } };
+      for (let t = __ct.cfg.tmin; t <= __ct.cfg.tmax; t += 0.02) {
+        const q = __ct.pose(t); if (q.valid) chk(q.Q, 'Q@'+t.toFixed(2)); }
+      const p = __ct.pose(__ct.cfg.temp);
+      ['O2','O4','O6','anchor'].forEach(k => chk(p[k], k));
+      return {worst, at}; })()""")
+    assert over["worst"] < 0.005, over
+    print(f"envelope {bb['w']:.2f} x {bb['h']:.2f}in, contains path+mounts "
+          f"(worst overshoot {over['worst']*1000:.2f} thou at {over['at']})")
+
+    # must update DURING a drag, not just on release -- buildBBox runs before fitView,
+    # which early-returns while dragPivot is set
+    o4 = pg.evaluate("__ct.pivotScreen('O4')")
+    pg.mouse.move(o4["x"], o4["y"]); pg.mouse.down()
+    pg.mouse.move(o4["x"] + 110, o4["y"] + 70, steps=8)
+    mid = pg.evaluate("__ct.bbox")
+    pg.mouse.up(); pg.wait_for_timeout(200)
+    assert abs(mid["w"] - bb["w"]) > 0.5 or abs(mid["h"] - bb["h"]) > 0.5, (bb, mid)
+    print(f"tracks live while dragging: {mid['w']:.2f} x {mid['h']:.2f}in mid-drag")
+    pg.keyboard.press("Control+z"); pg.wait_for_timeout(250)
+    back = pg.evaluate("__ct.bbox")
+    assert abs(back["w"] - bb["w"]) < 1e-6 and abs(back["h"] - bb["h"]) < 1e-6, (bb, back)
+    print("undo restores the envelope")
+
+    # the Bounding box checkbox. Probes the box's own top edge, which runs through empty
+    # background -- a colour match would also hit the steel links and the ghost traces.
+    probe = """(() => {
+      const s2 = __ct.pivotScreen('O2'), s4 = __ct.pivotScreen('O4'), g = __ct.geo;
+      const sc = Math.hypot(s4.x-s2.x, s4.y-s2.y) / Math.hypot(g.gx, g.gy);
+      const TX = w => ({x: w.x*sc + s2.x, y: w.y*sc + s2.y});
+      const bb = __ct.bbox, a = TX({x: bb.x0, y: bb.y0}), c = TX({x: bb.x1, y: bb.y1});
+      const cv = document.getElementById('c'), dpr = cv.width / parseFloat(cv.style.width);
+      const d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data;
+      let lit = 0;
+      for (let f = 0.05; f < 0.45; f += 0.004) {
+        const i = ((Math.round(a.y*dpr)) * cv.width + Math.round((a.x + (c.x-a.x)*f) * dpr)) * 4;
+        if (0.2126*d[i] + 0.7152*d[i+1] + 0.0722*d[i+2] > 28) lit++;   // background ~19
+      }
+      return lit; })()"""
+    assert pg.is_checked("#showBox"), "box is on by default"
+    on = pg.evaluate(probe)
+    pg.uncheck("#showBox"); pg.wait_for_timeout(300)
+    off = pg.evaluate(probe)
+    assert on > 25 and off == 0, (on, off)
+    pg.check("#showBox"); pg.wait_for_timeout(300)
+    assert pg.evaluate(probe) > 25, "re-checking brings the box back"
+    print(f"Bounding box checkbox: {on}/100 edge samples lit on, {off} off")
+
+    pg.uncheck("#showBox"); pg.fill("#sname", ""); pg.click("#save"); pg.wait_for_timeout(200)
+    pg.reload(); pg.wait_for_timeout(700)
+    assert pg.is_checked("#showBox") is False, "unchecked state must survive reload"
+    print("box visibility persists through save + reload")
+    pg.check("#showBox"); pg.click("#save"); pg.wait_for_timeout(150)
+
     # ---- 7. actuator rod end has an inner curve --------------------------
     assert pg.evaluate("Object.keys(__ct.pathJ)").count("R") == 1
     npts = pg.evaluate("__ct.pathJ.R.filter(Boolean).length")
