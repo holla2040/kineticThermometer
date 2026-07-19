@@ -72,10 +72,11 @@ with sync_playwright() as p:
     pg.wait_for_timeout(200)
     got = pg.evaluate("__ct.geo.L3")
     assert abs(got - 12.34) < 1e-9, f"loading 'bench test A' gave L3={got}"
-    assert pg.input_value("#sname") == "bench test A"
+    assert pg.input_value("#sname") == "", "recall must NOT populate the name field"
     print("loaded named design ->", pg.inner_text("#smsg"))
 
-    # delete
+    # delete -- keys off the name field, which recall no longer fills, so type it
+    pg.fill("#sname", "bench test A")
     pg.click("#del"); pg.wait_for_timeout(150)
     opts = pg.eval_on_selector_all("#sload option", "els=>els.map(e=>e.value)")
     assert opts == ["", "bench test B"], opts
@@ -289,7 +290,7 @@ with sync_playwright() as p:
     print(f"pan clamped at ({px:.0f},{py:.0f}) for a {vw}x{vh} viewport")
     pg.dblclick("canvas"); pg.wait_for_timeout(100)
 
-    # ---- 6. 1-degree sub-ticks ------------------------------------------
+    # ---- 6. ticks ---------------------------------------------------
     pg.select_option("#preset", "serpentine"); pg.wait_for_timeout(200)
     sub = pg.evaluate("__ct.buildPoints()")
     so = parse_dxf(sub)
@@ -297,19 +298,15 @@ with sync_playwright() as p:
     for e in so:
         if e["type"] == "LINE": lay[e[8][0]] = lay.get(e[8][0], 0) + 1
     print("tick line counts by layer:", lay)
-    # -20..110 -> 14 majors, 13 more at odd 5s, 104 remaining 1-degree subs
+    # -20..110 every 5 deg -> 27 ticks, 14 of them on the 10s
     assert lay["TICKS_MAJOR"] == 14, lay
     assert lay["TICKS_MINOR"] == 13, lay
-    assert lay["TICKS_SUB"] == 131 - 14 - 13, lay
-    # every sub-tick must be distinct: 1-degree ticks quantised onto shared path
-    # samples would collapse into duplicates
-    subs = [(round(float(e[10][0]), 4), round(float(e[20][0]), 4)) for e in so
-            if e["type"] == "LINE" and e[8][0] == "TICKS_SUB"]
-    assert len(set(subs)) == len(subs), f"{len(subs)-len(set(subs))} duplicate sub-tick positions"
-    print(f"{len(subs)} sub-ticks, all distinct")
+    assert "TICKS_SUB" not in lay, "1-degree sub-ticks were removed"
+    assert sorted(lay) == ["SCALE_CURVE", "TICKS_MAJOR", "TICKS_MINOR"], sorted(lay)
 
     # ticks must sit on the same side of the curve as on screen
-    ticks = pg.evaluate("__ct.ticks.map(k=>({t:k.t,x:k.q.x,y:k.q.y,nx:k.nx,ny:k.ny,tier:k.tier}))")
+    ticks = pg.evaluate("__ct.ticks.map(k=>({t:k.t,x:k.q.x,y:k.q.y,nx:k.nx,ny:k.ny,major:k.major}))")
+    assert len(ticks) == 27, len(ticks)
     tk = next(k for k in ticks if k["t"] == 70)
     dxf70 = [e for e in so if e["type"] == "LINE" and e[8][0] == "TICKS_MAJOR"]
     match = [e for e in dxf70
@@ -318,9 +315,8 @@ with sync_playwright() as p:
     assert match, "70F tick normal must mirror as a vector (same side as on screen)"
     print("tick normals mirror consistently into CAD space")
 
-    # the serpentine cusps near 70F: the tangent flips 180 there, so the raw left-normal
-    # would throw every tick above it onto the far side of the line. Adjacent ticks must
-    # never point more than 90 deg apart.
+    # the serpentine cusps: the tangent flips 180 there, so the raw left-normal would throw
+    # every tick past it onto the far side of the line. Adjacent ticks must stay together.
     flips = [(a["t"], b["t"]) for a, b in zip(ticks, ticks[1:])
              if a["nx"]*b["nx"] + a["ny"]*b["ny"] < 0]
     assert not flips, f"tick side flips between {flips}"

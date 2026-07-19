@@ -276,7 +276,28 @@
 
   // ---------- path cache ----------
   const NSAMP=140;
-  let pathQ=[], pathJ={R:[],B:[],C:[],P:[],D:[]}, pathValid=true, pathWhy=null, pathLen=0, speedRatio=1, view={s:1,ox:0,oy:0}, tickCache=[];
+  let pathQ=[], pathJ={R:[],B:[],C:[],P:[],D:[]}, pathValid=true, pathWhy=null, pathLen=0, speedRatio=1, view={s:1,ox:0,oy:0}, tickCache=[], pathChunks=[];
+  // One chunk per whole degree, each sampled finely enough to stay smooth where the path
+  // moves fastest. Boundaries fall exactly on integer temperatures — that is what puts the
+  // divisions on the tick marks. Cached with the path, not rebuilt per frame.
+  const CHUNKSUB=6;
+  function buildChunks(){
+    const bounds=[cfg.tmin];
+    for(let t=Math.ceil(cfg.tmin); t<cfg.tmax; t++) if(t>cfg.tmin) bounds.push(t);
+    bounds.push(cfg.tmax);
+    const out=[];
+    for(let i=1;i<bounds.length;i++){
+      const t0=bounds[i-1], t1=bounds[i], pts=[];
+      let ok=true;
+      for(let s=0;s<=CHUNKSUB;s++){
+        const p=pose(t0+(t1-t0)*s/CHUNKSUB);
+        if(!p.valid){ ok=false; break; }     // chunks that can't assemble simply aren't drawn
+        pts.push(p.Q);
+      }
+      if(ok) out.push({t:(t0+t1)/2, pts});
+    }
+    return out;
+  }
   function rebuildPath(){
     pathQ=[]; pathJ={R:[],B:[],C:[],P:[],D:[]}; pathValid=true; pathWhy=null;
     for(let i=0;i<=NSAMP;i++){
@@ -297,6 +318,7 @@
     }
     pathLen=len; speedRatio=(mn>1e-9)?mx/mn:0;
     tickCache=tickList();              // only changes with geo/range, so not per frame
+    pathChunks=buildChunks();
     fitView();
   }
   function fitView(){
@@ -367,14 +389,14 @@
     updateReadout(p);
   }
 
-  // Every 1° a tick: world position + outward normal + tier (0 sub, 1 five-deg, 2 labeled ten-deg).
-  // Positions come from pose(), not from indexing the 140-sample path — at 1° steps several
-  // ticks would land on the same sample and misreport the spacing, which IS the design here.
+  // A tick every 5°, flagged major on the 10s. World position + outward normal.
+  // Positions come from pose(), not from indexing the 140-sample path — several ticks would
+  // land on the same sample and misreport the spacing, which IS the design here.
   function tickList(){
     const out=[];
     const d=Math.min(0.5,(cfg.tmax-cfg.tmin)/200);
     let pnx=0,pny=0,have=false;
-    for(let t=Math.ceil(cfg.tmin); t<=cfg.tmax; t+=1){
+    for(let t=Math.ceil(cfg.tmin/5)*5; t<=cfg.tmax; t+=5){
       const p=pose(t); if(!p.valid) continue;
       const pa=pose(clamp(t-d,cfg.tmin,cfg.tmax)), pb=pose(clamp(t+d,cfg.tmin,cfg.tmax));
       if(!pa.valid||!pb.valid) continue;
@@ -386,38 +408,42 @@
       // to the far side of the line, which reads as a gap. Carry the side forward instead.
       if(have && nx*pnx+ny*pny<0){ nx=-nx; ny=-ny; }
       pnx=nx; pny=ny; have=true;
-      out.push({t, q:p.Q, nx, ny, tier:(t%10===0)?2:((t%5===0)?1:0)});
+      out.push({t, q:p.Q, nx, ny, major:(t%10===0)});
     }
     return out;
   }
 
   function drawScale(){
-    // the engraved spline: gradient stroke drawn in short segments
     ctx.lineCap='round';
-    for(let i=1;i<=NSAMP;i++){
-      if(!pathQ[i]||!pathQ[i-1]) continue;
-      const a=TX(pathQ[i-1]), b=TX(pathQ[i]);
-      const t=cfg.tmin+(cfg.tmax-cfg.tmin)*(i-0.5)/NSAMP;
-      // groove shadow
-      ctx.beginPath(); ctx.moveTo(a.x,a.y+2); ctx.lineTo(b.x,b.y+2);
-      ctx.strokeStyle='rgba(0,0,0,.45)'; ctx.lineWidth=9; ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y);
-      ctx.strokeStyle=tempColor(t); ctx.lineWidth=6; ctx.stroke();
-    }
+    // the path: one chunk per whole degree, coloured by temperature
+    ctx.lineWidth=6;
+    pathChunks.forEach(c=>{
+      const s=c.pts.map(TX);
+      ctx.beginPath(); s.forEach((q,i)=>i?ctx.lineTo(q.x,q.y):ctx.moveTo(q.x,q.y));
+      ctx.strokeStyle=tempColor(c.t); ctx.stroke();
+    });
+    // the divisions, cut ACROSS the path so they read the same whichever way it is heading.
+    // They used to be a side effect of a drop shadow offset in +y only, which is why they
+    // vanished wherever the path descends — there were none at all between 60 and 80°F.
+    // Boundaries are integer temperatures, so every major and minor tick lands on one.
+    ctx.lineCap='butt'; ctx.lineWidth=2.2; ctx.strokeStyle='rgba(0,0,0,.75)';
+    pathChunks.forEach(c=>{
+      const s=c.pts.map(TX), a=s[s.length-2], b=s[s.length-1];
+      const dx=b.x-a.x, dy=b.y-a.y, L=Math.hypot(dx,dy)||1;
+      const nx=-dy/L*3.4, ny=dx/L*3.4;
+      ctx.beginPath(); ctx.moveTo(b.x-nx,b.y-ny); ctx.lineTo(b.x+nx,b.y+ny); ctx.stroke();
+    });
+    ctx.lineCap='round';
     if(!cfg.ticks) return;
-    // ticks: equal TEMPERATURE steps — spacing on the curve is the tell
-    const LEN=[3.5,7,12], COL=['#5a6675','#8b97a8','#c9d4e2'], WID=[1,1.3,2];
+    // Labels only — no tick strokes. The divisions above already mark every degree, so a
+    // separate white comb beside the path was saying the same thing twice. The 10° label
+    // sits just off its own division; the 5° marks carry no label.
     ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillStyle='#c9d4e2'; ctx.font='600 12px -apple-system,sans-serif';
     tickCache.forEach(k=>{
-      const q=TX(k.q), len=LEN[k.tier];
-      ctx.beginPath();
-      ctx.moveTo(q.x+k.nx*5, q.y+k.ny*5);
-      ctx.lineTo(q.x+k.nx*(5+len), q.y+k.ny*(5+len));
-      ctx.strokeStyle=COL[k.tier]; ctx.lineWidth=WID[k.tier]; ctx.stroke();
-      if(k.tier===2){
-        ctx.fillStyle='#c9d4e2'; ctx.font='600 12px -apple-system,sans-serif';
-        ctx.fillText(k.t+'°', q.x+k.nx*(5+len+13), q.y+k.ny*(5+len+13));
-      }
+      if(!k.major) return;
+      const q=TX(k.q);
+      ctx.fillText(k.t+'°', q.x+k.nx*14, q.y+k.ny*14);
     });
   }
 
@@ -739,7 +765,6 @@
     const name=e.target.value; if(!name) return;
     pushUndo();
     if(applyData(readSaves()[name])){
-      document.getElementById('sname').value=name;
       rebuildPath();
       showSaveMsg('ok','Loaded “'+name+'” ✓');
     }
@@ -835,13 +860,13 @@
     for(let i=1;i<=NSAMP;i++)
       if(pathQ[i]&&pathQ[i-1]) DXF.line('SCALE_CURVE', f(pathQ[i-1]), f(pathQ[i]));
     // ticks: equal temperature steps, so unequal spacing along the curve — that is the design
-    const OFF=0.25, LEN=[0.2,0.4,0.75];            // inches: 1° sub, 5° minor, 10° major
-    const LAY=['TICKS_SUB','TICKS_MINOR','TICKS_MAJOR'];
+    const OFF=0.25;                                // inches off the curve
     tickCache.forEach(k=>{
       // mirroring y flips the normal as a vector, so the tick stays on the same side as on screen
-      const q=f(k.q), nx=k.nx, ny=-k.ny, len=LEN[k.tier];
-      DXF.line(LAY[k.tier], {x:q.x+nx*OFF, y:q.y+ny*OFF}, {x:q.x+nx*(OFF+len), y:q.y+ny*(OFF+len)});
-      if(k.tier===2){
+      const q=f(k.q), nx=k.nx, ny=-k.ny, len=k.major?0.75:0.4;
+      DXF.line(k.major?'TICKS_MAJOR':'TICKS_MINOR',
+               {x:q.x+nx*OFF, y:q.y+ny*OFF}, {x:q.x+nx*(OFF+len), y:q.y+ny*(OFF+len)});
+      if(k.major){
         DXF.point('POINTS', q);                    // snap target: exact indicator position at this temp
         DXF.text('LABELS',{x:q.x+nx*(OFF+len+0.28)-0.18, y:q.y+ny*(OFF+len+0.28)-0.11}, 0.28, k.t+'F');
       }
@@ -1155,6 +1180,7 @@
     pivotScreen:n=>{const p=pose(cfg.temp); return TX(pivotPos(n,p));},
     geo, cfg, buildParts, buildPoints, pan, pose, rebuild:()=>{syncUI();rebuildPath();},
     get ticks(){ return tickCache; },
+    get chunks(){ return pathChunks; },
     undoDepth:()=>undoStack.length,
     get pathJ(){ return pathJ; },      // rebuildPath reassigns it, so read it live
     dump:()=>JSON.stringify({geo,cfg},null,1)
