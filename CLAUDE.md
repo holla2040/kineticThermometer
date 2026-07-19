@@ -46,17 +46,37 @@ unrelated FABRIK inverse-kinematics demo kept for reference.
 
 ## Preset geometries (inches, O2-origin)
 
-Serpentine (CHOSEN): rA=12.8 dA=29.15 anch=-145.97° | stage1: gx=12.9 gy=-6.0
-L2=11.4 L3=10.4 L4=9.6 cu=3.5 cv=11.3 s1=-1 | stage2: ox=6.30 oy=-16.71
-L5=5.9 L6=14.0 cu2=14.6 cv2=3.6 s2=-1  → 41.4″ of scale, ~32× speed ratio.
+Serpentine (CHOSEN): rA=12.8 dA=27.3506 anch=-135.3211° | stage1: gx=12.9
+gy=-6.0 L2=11.4 L3=7.7705 L4=7.0142 cu=3.5 cv=11.3 s1=-1 | stage2: ox=6.30
+oy=-16.71 L5=5.9 L6=14.0 cu2=14.665 cv2=9.6354 s2=-1  → 58″ of scale.
+Excursion 0–15.5″ (not 0–17″ — see the ceiling below).
 
-Owner-tuned by dragging on 2026-07-19; replaced the earlier search result
-(dA=33.1 anch=-127.2 L3=11.2 ox=8.1 oy=-12.0 → 37″, 6.8×). Assembles over
-the full excursion (0–17″), but note it does NOT satisfy the original search
-constraints: 10°F steps run 1.38″ (at 0–10°F) to 8.07″ (at 80–90°F), so both
-the 2.2″ max-segment and ≤7× speed-ratio rules are exceeded. Accepted as a
-deliberate aesthetic choice, not a search product — re-confirm before
-generating fabrication output.
+Owner-tuned by dragging, second round, 2026-07-19. Superseded the first
+tuned version (dA=29.15 anch=-145.97 L3=10.4 L4=9.6 cv2=3.6 → 41.4″), which
+had a cusp at 70°F where the indicator stalled to 0.056″/°F — a dead spot at
+typical ambient. This one moves that slow region out to the cold end.
+
+Measured against the original search constraints — it does NOT satisfy them,
+same as its predecessor. Recorded honestly so nobody re-derives it:
+
+- 10°F steps run 1.02″ (−20..−10) to 10.95″ (100..110): max-segment rule
+  (≤2.2″) and speed-ratio rule (≤7×, actual 10.8×) both exceeded.
+- Slowest 1°F step 0.089″ at −20°F, below the 0.15″ min-segment rule.
+- Not monotonic: the scale expands, then slows at 40–50°F and again at
+  80–90°F, then expands hard. Sharpest kink is a 65° turn at 48°F.
+- **Mount rule (fabrication rule 3) is violated.** O6 clears the curve by
+  only 0.97″ and O2 by 2.41″ (rule: ≥2.5″), and four mount-to-mount lines
+  cross the scale: O2–O4, O2–O6, O4–O6, O4–ACT. The curve now weaves
+  between the mounts instead of staying on one side of them. This is a
+  build blocker, not an aesthetic call — unresolved as of this writing.
+- **Actuator ceiling: dA+rA=40.15″**, so the drive triangle stops closing
+  past ~15.65″ of extension. That is why extMax is 15.5 and not 17. The
+  controller must never command past 15.5″ or the linkage jams against a
+  pose it cannot reach. Only 0.15″ of slack — re-check this if dA, rA, or
+  the excursion is touched.
+
+`tools/analyze_geometry.py <dump.json>` re-runs all of the above against a
+`__ct.dump()` capture.
 
 Grand Arc: rA=20.8 dA=31.7 anch=166.7° gx=-3.8 gy=-0.1 L2=11.9 L3=11.8
 L4=12.6 cu=19.6 cv=-5.2 s1=-1 ox=7.7 oy=-7.6 L5=8.5 L6=13.5 cu2=19.3
@@ -91,20 +111,40 @@ flow plus both DXF exports (`python3 tools/verify_export.py [outdir]`).
 - Draggable canvas handles: all 4 mounts AND all joint pins (R sets rA,
   B sets L2, C sets L3+L4, P sets cu/cv, D sets L5+L6, Q sets cu2/cv2).
   View refit is suppressed during drag; sliders track live; any edit
-  switches preset to "custom".
+  switches preset to "custom". Grabbing a handle also switches auto-cycle
+  off — you can't tune against a moving target.
+- **Undo** (button + Ctrl/Cmd+Z, 60 deep) for wholesale geo changes: drags,
+  preset switches, Reset, loading a saved design. A drag snapshots once, on
+  first movement, so a grab-and-release pushes nothing. The preset label is
+  re-derived from the restored geometry (presetOf) rather than snapshotted —
+  the dropdown has already moved by the time its change event fires.
+- **Pan**: right-drag anywhere, or drag empty canvas (so it works on touch).
+  Double-click recenters. `pan` is added on top of the auto-fit in TX() and
+  subtracted back out in worldOf(), so a refit keeps it and pivot dragging
+  still tracks the cursor. Clamped to ±0.6 viewport so nothing gets lost.
 - Hover: component highlight + tooltip naming the part + its sliders, and
   the matching slider rows highlight in the panel (COMPINFO / hlSliders).
 - Collapsible <details> sections for Stage 1 / Stage 2 / Actuator drive.
-- Scale ticks every 10° labeled, 5° minors. "Inner curves" checkbox traces
-  all four moving joints (B, C, P, D) as dashed paths.
+- Scale ticks: **every 1°**, tiered — 10° labeled major, 5° minor, 1° sub
+  (tickList(), cached in tickCache by rebuildPath, not recomputed per frame).
+  Positions come from pose() directly, NOT from indexing the 140-sample
+  path: at 1° steps several ticks land on one sample and the spacing — the
+  whole point of this scale — comes out wrong. tickList also carries the
+  normal's side forward from tick to tick, because a coupler curve can cusp
+  and flip the tangent 180°, which would throw the rest of the comb to the
+  far side of the line. Don't "simplify" either of those away.
+- "Inner curves" checkbox traces every moving joint (R, B, C, P, D) as
+  dashed paths — R is the actuator rod end.
 - Settings persist to localStorage key `couplerThermometer.v2` (guarded
-  try/catch — degrades to in-memory where storage is blocked). Save /
-  Clear saved buttons; auto-restore on load.
+  try/catch — degrades to in-memory where storage is blocked); every Save
+  writes it and it auto-restores on load. There is deliberately no manual
+  "clear auto-restore" button — the owner found it confusing next to the
+  named designs. Don't add one back.
 - **Named designs**: type a name before Save and it also goes into the map
-  under `couplerThermometer.saves`; the "Load a saved design…" dropdown
-  restores one, Delete removes the named entry. Saving with the name field
-  empty still updates the auto-restore slot. "Clear saved" only clears
-  auto-restore — it leaves named designs alone.
+  under `couplerThermometer.saves`; the name field then clears and the
+  "Load a saved design…" dropdown holds the record. Delete removes the
+  entry named in the field (loading from the dropdown refills it). Saving
+  with the name empty still updates the auto-restore slot.
 - **DXF export for Fusion** (two buttons, R12 ASCII, inches, y flipped to
   CAD convention). `showSaveFilePicker` gives a real Save dialog where the
   browser has one, else it falls back to an `<a download>`:
@@ -119,9 +159,11 @@ flow plus both DXF exports (`python3 tools/verify_export.py [outdir]`).
     tick and mount to snap to.
   Curves are line segments, not splines — fit a spline in Fusion if wanted.
 - Public view: uncheck "Show mechanism" — only scale + indicator bead.
-- Debug hook for tests: `window.__ct` = {pivotScreen(name), geo, cfg,
-  buildParts(), buildPoints()} — the two builders return DXF text, so tests
-  can assert on the export without going through the download.
+- Debug hook for tests: `window.__ct` = {pivotScreen(name), geo, cfg, pose,
+  pan, rebuild(), ticks, pathJ, undoDepth(), buildParts(), buildPoints(),
+  dump()}. The builders return DXF text so tests can assert on the export
+  without a download. `dump()` returns geo+cfg as JSON — this is how the
+  owner hands over a hand-tuned design: `copy(__ct.dump())` in the console.
 
 ## Verification pattern used throughout
 
@@ -139,16 +181,28 @@ persistence tests, screenshot and inspect. Keep doing this for changes.
    calibration table for the controller. Note the exports read the CURRENT
    geo, and the chosen Serpentine preset still violates the original search
    constraints (see the preset section) — re-confirm before cutting metal.
-2. **.linkage2 export** — write the chosen geometry as XML for David
+2. **Ticks belong IN the line, not beside it.** The indicator will be a
+   **ring with a hole in the middle** — the viewer reads the temperature
+   *through* the ring — so tick marks alongside the curve get covered up.
+   Ticks currently sit outside the line (offset 5px, lengths 3.5/7/12) and
+   the DXF puts them 0.25″ off the curve. They should straddle it instead.
+   An attempt at this was reverted on 2026-07-19: it worked, but it also
+   changed the line to a physical band width, restyled every tick tier,
+   swapped the bead indicator for a ring, and added a "band width" field —
+   the owner couldn't see the one wanted change through the four unwanted
+   ones. Redo it as the single change: move the tick endpoints from
+   `+5..+5+len` to straddling the curve. Leave the line, the tiers, the
+   indicator and the field list alone unless asked.
+3. **.linkage2 export** — write the chosen geometry as XML for David
    Rector's Linkage program (Windows; blog.rectorsquid.com). Not started.
-3. Unresolved question: owner once asked for "beginning and ending point
+4. Unresolved question: owner once asked for "beginning and ending point
    control for actuator"; clarification returned "no preference". The
    excursion fields may already satisfy it. Re-confirm before building
    anything (candidates were: XY fields for actuator mounts, absolute
    length endpoints, or crank start/end angles).
-4. Possible polish: auto-thin tick labels where the non-linear scale
+5. Possible polish: auto-thin tick labels where the non-linear scale
    crowds them (owner was told this is available on request).
-5. Real-world drive: temperature sensor → controller → actuator position;
+6. Real-world drive: temperature sensor → controller → actuator position;
    the sim's temp→extension mapping (linear within excursion, optional
    reverse) is the spec the controller must implement.
 

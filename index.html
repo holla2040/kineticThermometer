@@ -59,6 +59,8 @@
     padding:9px;font-size:12px;cursor:pointer;font-weight:600;}
   button:hover{background:#333c4b;}
   button.primary{background:var(--accent);color:#2a1a00;}
+  button:disabled{opacity:.38;cursor:default;}
+  button:disabled:hover{background:var(--border);}
   .readout{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px;}
   .stat{background:#10151d;border:1px solid var(--border);border-radius:10px;padding:7px 10px;}
   .stat .k{font-size:9px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);}
@@ -173,7 +175,6 @@
   <div class="btns" style="margin-top:8px;">
     <button class="primary" id="save">Save</button>
     <button id="del">Delete</button>
-    <button id="clear">Clear saved</button>
   </div>
   <div id="smsg"></div>
 
@@ -189,6 +190,7 @@
   <div id="emsg"></div>
 
   <div class="btns">
+    <button id="undo" disabled>↶ Undo</button>
     <button class="primary" id="reset">Reset preset</button>
     <button id="hide">Hide</button>
   </div>
@@ -196,7 +198,7 @@
 </div>
 <div id="toggle">☰</div>
 <div id="tip"><div class="n"></div><div class="s"></div></div>
-<div id="hint">Drag mounts &amp; joint pins to reshape the linkage · <b>Space</b> plays/pauses · uncheck <b>Show mechanism</b> for the public view</div>
+<div id="hint">Drag mounts &amp; joint pins to reshape · right-drag or drag empty space to pan, double-click to recenter · <b>Space</b> plays/pauses · <b>Ctrl+Z</b> undoes</div>
 
 <script>
 (function(){
@@ -207,18 +209,22 @@
 
   // ---------- presets (found by numeric search; valid over full stroke) ----------
   // presets re-searched for the REAL actuator envelope: 24″ retracted, 42″ extended
-  // fabrication-friendly presets: all fixed mounts cluster on one side of the scale,
-  // and the spline never passes between any two mounting points
+  // NOTE: grandarc still satisfies the mount rule (all fixed mounts on one side of the
+  // scale, no mount-to-mount line crossing the spline). The hand-tuned serpentine does
+  // NOT — O6 clears the curve by 0.97″ and four mount pairs cross it. See CLAUDE.md;
+  // unresolved, and a build blocker. tools/analyze_geometry.py re-measures both.
   const PRESETS={
-    serpentine:{rA:12.8, dA:29.15, anch:-145.97, gx:12.9, gy:-6.0, L2:11.4, L3:10.4, L4:9.6,
-                cu:3.5, cv:11.3, s1:-1, ox:6.30, oy:-16.71, L5:5.9, L6:14.0, cu2:14.6, cv2:3.6, s2:-1},
+    serpentine:{rA:12.8, dA:27.3506, anch:-135.3211, gx:12.9, gy:-6.0, L2:11.4, L3:7.7705, L4:7.0142,
+                cu:3.5, cv:11.3, s1:-1, ox:6.30, oy:-16.71, L5:5.9, L6:14.0, cu2:14.665, cv2:9.6354, s2:-1},
     grandarc:  {rA:20.8, dA:31.7, anch:166.7, gx:-3.8, gy:-0.1, L2:11.9, L3:11.8, L4:12.6,
                 cu:19.6, cv:-5.2, s1:-1, ox:7.7, oy:-7.6, L5:8.5, L6:13.5, cu2:19.3, cv2:-12.0, s2:-1}
   };
 
   const geo=Object.assign({}, PRESETS.serpentine);
   const cfg={temp:70, tmin:-20, tmax:110, demo:true, reveal:true, ticks:true, ghost:true, speed:0.1, tdir:false,
-             extMin:0, extMax:17,      // used slice of the actuator stroke, in inches of extension
+             extMin:0, extMax:15.5,    // used slice of the actuator stroke, in inches of extension
+                                       // 15.5 is near the ceiling for the serpentine preset:
+                                       // dA+rA=40.15, so past ~15.65″ the drive triangle won't close
              hole:0.375, lwid:1.5};    // fabrication: pivot hole ⌀ and link stock width, inches
   // actuator stroke envelope (pin-to-pin): 24″ retracted + 18″ stroke = 42″ extended
   const ACT={lmin:24, stroke:18};
@@ -270,14 +276,14 @@
 
   // ---------- path cache ----------
   const NSAMP=140;
-  let pathQ=[], pathJ={B:[],C:[],P:[],D:[]}, pathValid=true, pathWhy=null, pathLen=0, speedRatio=1, view={s:1,ox:0,oy:0};
+  let pathQ=[], pathJ={R:[],B:[],C:[],P:[],D:[]}, pathValid=true, pathWhy=null, pathLen=0, speedRatio=1, view={s:1,ox:0,oy:0}, tickCache=[];
   function rebuildPath(){
-    pathQ=[]; pathJ={B:[],C:[],P:[],D:[]}; pathValid=true; pathWhy=null;
+    pathQ=[]; pathJ={R:[],B:[],C:[],P:[],D:[]}; pathValid=true; pathWhy=null;
     for(let i=0;i<=NSAMP;i++){
       const t=cfg.tmin+(cfg.tmax-cfg.tmin)*i/NSAMP;
       const p=pose(t);
       pathQ.push(p.valid?p.Q:null);
-      pathJ.B.push(p.B||null); pathJ.C.push(p.C||null);
+      pathJ.R.push(p.R||null); pathJ.B.push(p.B||null); pathJ.C.push(p.C||null);
       pathJ.P.push(p.P||null); pathJ.D.push(p.D||null);
       if(!p.valid){ pathValid=false; pathWhy=pathWhy||p.why||'chain'; }
     }
@@ -290,6 +296,7 @@
       }
     }
     pathLen=len; speedRatio=(mn>1e-9)?mx/mn:0;
+    tickCache=tickList();              // only changes with geo/range, so not per frame
     fitView();
   }
   function fitView(){
@@ -307,7 +314,9 @@
     view.ox=leftEdge+(W-leftEdge-(x0+x1)*view.s)/2;
     view.oy=(H-(y0+y1)*view.s)/2;
   }
-  const TX=p=>({x:p.x*view.s+view.ox, y:p.y*view.s+view.oy});
+  // pan rides on top of the auto-fit, so a refit keeps wherever the user dragged the view to
+  const pan={x:0,y:0};
+  const TX=p=>({x:p.x*view.s+view.ox+pan.x, y:p.y*view.s+view.oy+pan.y});
 
   // ---------- colors ----------
   function tempColor(t){
@@ -358,6 +367,30 @@
     updateReadout(p);
   }
 
+  // Every 1° a tick: world position + outward normal + tier (0 sub, 1 five-deg, 2 labeled ten-deg).
+  // Positions come from pose(), not from indexing the 140-sample path — at 1° steps several
+  // ticks would land on the same sample and misreport the spacing, which IS the design here.
+  function tickList(){
+    const out=[];
+    const d=Math.min(0.5,(cfg.tmax-cfg.tmin)/200);
+    let pnx=0,pny=0,have=false;
+    for(let t=Math.ceil(cfg.tmin); t<=cfg.tmax; t+=1){
+      const p=pose(t); if(!p.valid) continue;
+      const pa=pose(clamp(t-d,cfg.tmin,cfg.tmax)), pb=pose(clamp(t+d,cfg.tmin,cfg.tmax));
+      if(!pa.valid||!pb.valid) continue;
+      const tx=pb.Q.x-pa.Q.x, ty=pb.Q.y-pa.Q.y, tl=Math.hypot(tx,ty);
+      if(tl<1e-9) continue;                       // stalled dead: no meaningful normal
+      let nx=-ty/tl, ny=tx/tl;
+      // A coupler curve can cusp — the indicator decelerates to nothing and turns, flipping
+      // the tangent 180°. The raw left-normal flips with it and throws the rest of the comb
+      // to the far side of the line, which reads as a gap. Carry the side forward instead.
+      if(have && nx*pnx+ny*pny<0){ nx=-nx; ny=-ny; }
+      pnx=nx; pny=ny; have=true;
+      out.push({t, q:p.Q, nx, ny, tier:(t%10===0)?2:((t%5===0)?1:0)});
+    }
+    return out;
+  }
+
   function drawScale(){
     // the engraved spline: gradient stroke drawn in short segments
     ctx.lineCap='round';
@@ -373,26 +406,19 @@
     }
     if(!cfg.ticks) return;
     // ticks: equal TEMPERATURE steps — spacing on the curve is the tell
-    const step=10, lstep=10;           // labeled tick every 10°
+    const LEN=[3.5,7,12], COL=['#5a6675','#8b97a8','#c9d4e2'], WID=[1,1.3,2];
     ctx.textAlign='center'; ctx.textBaseline='middle';
-    for(let t=Math.ceil(cfg.tmin/step)*step; t<=cfg.tmax; t+=step){
-      const i=Math.round((t-cfg.tmin)/(cfg.tmax-cfg.tmin)*NSAMP);
-      const i0=Math.max(1,Math.min(NSAMP-1,i));
-      if(!pathQ[i0-1]||!pathQ[i0+1]||!pathQ[i0]) continue;
-      const a=TX(pathQ[i0-1]), b=TX(pathQ[i0+1]), q=TX(pathQ[i0]);
-      let tx=b.x-a.x, ty=b.y-a.y; const tl=Math.hypot(tx,ty)||1; tx/=tl; ty/=tl;
-      const nx=-ty, ny=tx;
-      const big=(t%lstep===0);
-      const len=big?12:7;
+    tickCache.forEach(k=>{
+      const q=TX(k.q), len=LEN[k.tier];
       ctx.beginPath();
-      ctx.moveTo(q.x+nx*5, q.y+ny*5);
-      ctx.lineTo(q.x+nx*(5+len), q.y+ny*(5+len));
-      ctx.strokeStyle=big?'#c9d4e2':'#5a6675'; ctx.lineWidth=big?2:1.3; ctx.stroke();
-      if(big){
+      ctx.moveTo(q.x+k.nx*5, q.y+k.ny*5);
+      ctx.lineTo(q.x+k.nx*(5+len), q.y+k.ny*(5+len));
+      ctx.strokeStyle=COL[k.tier]; ctx.lineWidth=WID[k.tier]; ctx.stroke();
+      if(k.tier===2){
         ctx.fillStyle='#c9d4e2'; ctx.font='600 12px -apple-system,sans-serif';
-        ctx.fillText(t+'°', q.x+nx*(5+len+13), q.y+ny*(5+len+13));
+        ctx.fillText(k.t+'°', q.x+k.nx*(5+len+13), q.y+k.ny*(5+len+13));
       }
-    }
+    });
   }
 
   function traceJoint(arr,col){
@@ -407,6 +433,7 @@
   }
   function drawGhost(){
     // dashed traces of every moving joint over the full temperature range
+    traceJoint(pathJ.R,'rgba(159,176,195,.55)');  // actuator rod end R (arc)
     traceJoint(pathJ.B,'rgba(217,164,65,.55)');   // crank pin B (arc)
     traceJoint(pathJ.C,'rgba(139,148,166,.5)');   // rocker-1 pin C (arc)
     traceJoint(pathJ.P,'rgba(79,209,197,.65)');   // stage-1 coupler point P
@@ -683,6 +710,7 @@
       const s=readSaves(); s[name]=data;
       stored=writeSaves(s)&&stored;
       refreshSaveList(name);
+      document.getElementById('sname').value='';   // dropdown holds the record now
     }
     if(!stored) showSaveMsg('warn','Browser storage is blocked here — kept for this session only. Open the file directly (not through a sandboxed viewer) to persist.');
     else if(name) showSaveMsg('ok','Saved as “'+name+'” ✓ — also restores automatically next time.');
@@ -698,11 +726,6 @@
     showSaveMsg('ok','Restored saved settings ✓');
     return true;
   }
-  function clearSettings(){
-    try{ localStorage.removeItem(LSKEY); }catch(e){}
-    memStore=null;
-    showSaveMsg('ok','Auto-restore cleared — presets load fresh next time. Named designs are kept.');
-  }
   function deleteSave(){
     const name=document.getElementById('sname').value.trim();
     const s=readSaves();
@@ -711,10 +734,10 @@
     showSaveMsg('ok','Deleted “'+name+'”.');
   }
   document.getElementById('save').addEventListener('click',saveSettings);
-  document.getElementById('clear').addEventListener('click',clearSettings);
   document.getElementById('del').addEventListener('click',deleteSave);
   document.getElementById('sload').addEventListener('change',e=>{
     const name=e.target.value; if(!name) return;
+    pushUndo();
     if(applyData(readSaves()[name])){
       document.getElementById('sname').value=name;
       rebuildPath();
@@ -812,21 +835,17 @@
     for(let i=1;i<=NSAMP;i++)
       if(pathQ[i]&&pathQ[i-1]) DXF.line('SCALE_CURVE', f(pathQ[i-1]), f(pathQ[i]));
     // ticks: equal temperature steps, so unequal spacing along the curve — that is the design
-    const OFF=0.25, MAJ=0.75, MIN=0.4;             // inches off the curve
-    for(let t=Math.ceil(cfg.tmin/5)*5; t<=cfg.tmax; t+=5){
-      const i=clamp(Math.round((t-cfg.tmin)/(cfg.tmax-cfg.tmin)*NSAMP),1,NSAMP-1);
-      if(!pathQ[i]||!pathQ[i-1]||!pathQ[i+1]) continue;
-      const a=f(pathQ[i-1]), b=f(pathQ[i+1]), q=f(pathQ[i]);
-      const tl=Math.hypot(b.x-a.x,b.y-a.y)||1;
-      const nx=-(b.y-a.y)/tl, ny=(b.x-a.x)/tl;
-      const big=(t%10===0), len=big?MAJ:MIN;
-      DXF.line(big?'TICKS_MAJOR':'TICKS_MINOR',
-               {x:q.x+nx*OFF, y:q.y+ny*OFF}, {x:q.x+nx*(OFF+len), y:q.y+ny*(OFF+len)});
-      if(big){
+    const OFF=0.25, LEN=[0.2,0.4,0.75];            // inches: 1° sub, 5° minor, 10° major
+    const LAY=['TICKS_SUB','TICKS_MINOR','TICKS_MAJOR'];
+    tickCache.forEach(k=>{
+      // mirroring y flips the normal as a vector, so the tick stays on the same side as on screen
+      const q=f(k.q), nx=k.nx, ny=-k.ny, len=LEN[k.tier];
+      DXF.line(LAY[k.tier], {x:q.x+nx*OFF, y:q.y+ny*OFF}, {x:q.x+nx*(OFF+len), y:q.y+ny*(OFF+len)});
+      if(k.tier===2){
         DXF.point('POINTS', q);                    // snap target: exact indicator position at this temp
-        DXF.text('LABELS',{x:q.x+nx*(OFF+len+0.28)-0.18, y:q.y+ny*(OFF+len+0.28)-0.11}, 0.28, t+'F');
+        DXF.text('LABELS',{x:q.x+nx*(OFF+len+0.28)-0.18, y:q.y+ny*(OFF+len+0.28)-0.11}, 0.28, k.t+'F');
       }
-    }
+    });
     const p=pose(cfg.temp);
     [['O2',p.O2],['O4_ROCKER1',p.O4],['O6_ROCKER2',p.O6],['ACT_ANCHOR',p.anchor]].forEach(m=>{
       if(!m[1]) return;
@@ -875,8 +894,37 @@
       +'Wrote '+f+' — scale curve, 5°/10° ticks, the 4 mounts, and POINT entities to snap to. Import as inches.');
   });
 
+  // ---------- undo (wholesale geo changes: drags, presets, loading a save) ----------
+  const undoStack=[];
+  // derive the preset label from the geometry itself — the dropdown has already moved by the
+  // time its change event fires, so snapshotting its value would label the undo wrong
+  function presetOf(g){
+    for(const k in PRESETS)
+      if(Object.keys(PRESETS[k]).every(p=>Math.abs(PRESETS[k][p]-g[p])<1e-9)) return k;
+    return 'custom';
+  }
+  const UNDOCFG=['tmin','tmax','extMin','extMax'];   // cfg fields that reshape the curve
+  function pushUndo(){
+    const snap={geo:Object.assign({},geo)};
+    UNDOCFG.forEach(k=>snap[k]=cfg[k]);
+    undoStack.push(snap);
+    if(undoStack.length>60) undoStack.shift();
+    document.getElementById('undo').disabled=false;
+  }
+  function undo(){
+    const s=undoStack.pop();
+    if(!s) return;
+    Object.assign(geo,s.geo);
+    UNDOCFG.forEach(k=>cfg[k]=s[k]);
+    document.getElementById('preset').value=presetOf(geo);
+    document.getElementById('undo').disabled=!undoStack.length;
+    syncUI(); rebuildPath();          // syncUI, not syncSliders: the cfg fields moved too
+  }
+  document.getElementById('undo').addEventListener('click',undo);
+
   // ---------- draggable mounts & hover labels ----------
   let dragPivot=null, hoverPivot=null, hoverCompId=null, lastWorld=null;
+  let panning=false, lastScreen=null, dragMoved=false;
 
   const SLIDERNAMES={rA:'Crank radius rA', dA:'Anchor dist. dA', anch:'Anchor angle',
     L2:'Crank arm L2', L3:'Coupler L3', cu:'Coupler pt u', cv:'Coupler pt v',
@@ -963,7 +1011,7 @@
   function worldOf(e){
     const r=canvas.getBoundingClientRect();
     const sx=e.clientX-r.left, sy=e.clientY-r.top;
-    return {x:(sx-view.ox)/view.s, y:(sy-view.oy)/view.s, sx, sy};
+    return {x:(sx-view.ox-pan.x)/view.s, y:(sy-view.oy-pan.y)/view.s, sx, sy};
   }
   function pickPivot(sx,sy){
     if(!cfg.reveal) return null;
@@ -984,12 +1032,22 @@
     });
     document.getElementById('preset').value='custom';
   }
+  canvas.addEventListener('contextmenu',e=>e.preventDefault());   // right-drag pans instead
   canvas.addEventListener('pointerdown',e=>{
     const w=worldOf(e);
-    dragPivot=pickPivot(w.sx,w.sy);
-    if(dragPivot){ hideTip(); lastWorld=w; canvas.setPointerCapture(e.pointerId); e.preventDefault(); }
+    dragPivot=(e.button===0)?pickPivot(w.sx,w.sy):null;            // touch reports button 0
+    hideTip();
+    if(dragPivot){
+      cfg.demo=false;                                              // a drag always stops the cycle
+      document.getElementById('demo').checked=false;
+      dragMoved=false; lastWorld=w;
+    } else {
+      panning=true; lastScreen={x:e.clientX,y:e.clientY};          // right button, or empty space
+    }
+    canvas.setPointerCapture(e.pointerId); e.preventDefault();
   });
   canvas.addEventListener('pointerleave',hideTip);
+  canvas.addEventListener('dblclick',()=>{ pan.x=pan.y=0; });      // recenter
   // spacebar toggles auto-cycle — always, except while typing in a text/number field
   function syncDemoPhase(){
     // resume the cycle from the CURRENT temperature so toggling never jumps
@@ -997,9 +1055,14 @@
     demoT=Math.acos(1-2*f)/(2*Math.PI);
   }
   window.addEventListener('keydown',e=>{
+    const fld=document.activeElement;
+    const typing=fld && fld.tagName==='INPUT' && /text|number/.test(fld.type);
+    if(e.code==='KeyZ' && (e.ctrlKey||e.metaKey)){
+      if(typing) return;                // let the text field do its own undo
+      e.preventDefault(); undo(); return;
+    }
     if(e.code!=='Space') return;
-    const el=document.activeElement;
-    if(el && el.tagName==='INPUT' && /text|number/.test(el.type)) return;
+    if(typing) return;
     e.preventDefault();                 // stops focused buttons/checkboxes from re-firing
     cfg.demo=!cfg.demo;
     if(cfg.demo) syncDemoPhase();
@@ -1009,6 +1072,15 @@
     if(e.target.checked) syncDemoPhase();
   });
   canvas.addEventListener('pointermove',e=>{
+    if(panning){
+      // clamped so the mechanism can never be pushed entirely off-screen
+      pan.x=clamp(pan.x+e.clientX-lastScreen.x, -W*0.6, W*0.6);
+      pan.y=clamp(pan.y+e.clientY-lastScreen.y, -H*0.6, H*0.6);
+      lastScreen={x:e.clientX,y:e.clientY};
+      canvas.style.cursor='grabbing';
+      e.preventDefault();
+      return;
+    }
     const w=worldOf(e);
     if(!dragPivot){
       const comp=cfg.reveal?hitComp(w.sx,w.sy):null;
@@ -1019,6 +1091,7 @@
       return;
     }
     canvas.style.cursor='grabbing';
+    if(!dragMoved){ dragMoved=true; pushUndo(); }   // snapshot once per drag, before it changes geo
     if(dragPivot==='O4'){
       geo.gx=clamp(w.x,-24,30); geo.gy=clamp(w.y,-24,24); updGeoUI(['gx','gy']);
     } else if(dragPivot==='O6'){
@@ -1071,6 +1144,7 @@
   });
   function endDrag(){
     if(dragPivot){ dragPivot=null; rebuildPath(); }   // refit view once on release
+    panning=false;
     canvas.style.cursor='default';
   }
   canvas.addEventListener('pointerup',endDrag);
@@ -1079,16 +1153,20 @@
   // small debug/testing hook
   window.__ct={
     pivotScreen:n=>{const p=pose(cfg.temp); return TX(pivotPos(n,p));},
-    geo, cfg, buildParts, buildPoints
+    geo, cfg, buildParts, buildPoints, pan, pose, rebuild:()=>{syncUI();rebuildPath();},
+    get ticks(){ return tickCache; },
+    undoDepth:()=>undoStack.length,
+    get pathJ(){ return pathJ; },      // rebuildPath reassigns it, so read it live
+    dump:()=>JSON.stringify({geo,cfg},null,1)
   };
   document.getElementById('preset').addEventListener('change',e=>{
     const v=e.target.value;
-    if(PRESETS[v]){ Object.assign(geo,PRESETS[v]); syncSliders(); rebuildPath(); }
+    if(PRESETS[v]){ pushUndo(); Object.assign(geo,PRESETS[v]); syncSliders(); rebuildPath(); }
   });
   document.getElementById('reset').addEventListener('click',()=>{
     const v=document.getElementById('preset').value;
     const src=PRESETS[v]||PRESETS.serpentine;
-    Object.assign(geo,src); syncSliders(); rebuildPath();
+    pushUndo(); Object.assign(geo,src); syncSliders(); rebuildPath();
   });
   const panel=document.getElementById('panel');
   document.getElementById('hide').addEventListener('click',()=>panel.classList.add('collapsed'));

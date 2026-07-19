@@ -48,7 +48,9 @@ with sync_playwright() as p:
     pg.wait_for_timeout(150)
     opts = pg.eval_on_selector_all("#sload option", "els=>els.map(e=>e.value)")
     assert opts == ["", "bench test A"], opts
-    print("save list:", opts, "|", pg.inner_text("#smsg"))
+    assert pg.input_value("#sname") == "", "name field clears after a named save"
+    assert pg.input_value("#sload") == "bench test A", "dropdown holds the record instead"
+    print("save list:", opts, "| name field cleared |", pg.inner_text("#smsg"))
 
     # a second, different design
     pg.fill("#sname", "bench test B")
@@ -83,7 +85,7 @@ with sync_playwright() as p:
     # back to the chosen preset, through the UI so the path cache rebuilds
     pg.select_option("#preset", "serpentine")
     pg.wait_for_timeout(200)
-    assert abs(pg.evaluate("__ct.geo.L3") - 10.4) < 1e-9
+    assert abs(pg.evaluate("__ct.geo.L3") - 7.7705) < 1e-9
     pg.fill("#hole", "0.375"); pg.dispatch_event("#hole", "change")
     pg.fill("#lwid", "1.5");   pg.dispatch_event("#lwid", "change")
 
@@ -203,7 +205,135 @@ with sync_playwright() as p:
     print("fallback path: downloaded", d.suggested_filename)
     print("export msg:", pg.inner_text("#emsg"))
 
-    # ---- 4. nothing regressed -------------------------------------------
+    # ---- 4. drag: stops auto-cycle, is undoable --------------------------
+    pg.select_option("#preset", "serpentine"); pg.wait_for_timeout(200)
+    pg.evaluate("__ct.cfg.demo = true; document.getElementById('demo').checked = true")
+    before = pg.evaluate("__ct.geo.gx")
+    depth0 = pg.evaluate("__ct.undoDepth()")   # preset switches push too, so measure deltas
+    o4 = pg.evaluate("__ct.pivotScreen('O4')")
+    pg.mouse.move(o4["x"], o4["y"]); pg.mouse.down()
+    pg.mouse.move(o4["x"] + 60, o4["y"] + 25, steps=6); pg.mouse.up()
+    pg.wait_for_timeout(200)
+    assert pg.evaluate("__ct.cfg.demo") is False, "drag must stop auto-cycle"
+    assert pg.is_checked("#demo") is False, "demo checkbox must follow"
+    moved = pg.evaluate("__ct.geo.gx")
+    assert abs(moved - before) > 0.5, (before, moved)
+    assert pg.evaluate("!document.getElementById('undo').disabled"), "undo should be armed"
+    assert pg.evaluate("__ct.undoDepth()") == depth0 + 1, "one drag = exactly one undo state"
+    print(f"drag O4: gx {before:.2f} -> {moved:.2f}, auto-cycle off, undo armed")
+
+    pg.click("#undo"); pg.wait_for_timeout(200)
+    assert abs(pg.evaluate("__ct.geo.gx") - before) < 1e-9, "undo must restore gx"
+    assert pg.input_value("#preset") == "serpentine", "undo relabels the preset from the geometry"
+    assert pg.evaluate("__ct.undoDepth()") == depth0
+    print("undo restored gx and the preset label")
+
+    # grab-and-release without moving must not push a junk undo state
+    pg.mouse.move(o4["x"], o4["y"]); pg.mouse.down(); pg.mouse.up()
+    pg.wait_for_timeout(150)
+    assert pg.evaluate("__ct.undoDepth()") == depth0, "no-op grab must not push undo"
+    print("grab without move leaves the undo stack alone")
+
+    # Ctrl+Z path
+    pg.mouse.move(o4["x"], o4["y"]); pg.mouse.down()
+    pg.mouse.move(o4["x"] - 40, o4["y"], steps=5); pg.mouse.up()
+    pg.wait_for_timeout(150)
+    pg.keyboard.press("Control+z"); pg.wait_for_timeout(200)
+    assert abs(pg.evaluate("__ct.geo.gx") - before) < 1e-9, "Ctrl+Z must undo the drag"
+    print("Ctrl+Z undo works")
+
+    # undo must restore the range/excursion too, not just geo -- loading a saved design
+    # changes both, so a geo-only undo would leave the curve reshaped
+    pg.evaluate("document.querySelectorAll('details').forEach(d => d.open = true)")
+    pg.select_option("#preset", "serpentine"); pg.wait_for_timeout(150)
+    pg.fill("#extMax", "12"); pg.dispatch_event("#extMax", "change"); pg.wait_for_timeout(150)
+    pg.select_option("#preset", "grandarc"); pg.wait_for_timeout(150)   # snapshots extMax=12
+    pg.fill("#extMax", "9"); pg.dispatch_event("#extMax", "change"); pg.wait_for_timeout(150)
+    pg.click("#undo"); pg.wait_for_timeout(200)
+    assert pg.evaluate("__ct.cfg.extMax") == 12, pg.evaluate("__ct.cfg.extMax")
+    assert pg.input_value("#extMax") == "12", "the field must follow too"
+    assert pg.input_value("#preset") == "serpentine"
+    print("undo restored excursion (9 -> 12) alongside the geometry")
+
+    # ---- 5. panning ------------------------------------------------------
+    q0 = pg.evaluate("__ct.pivotScreen('O2')")
+    pg.mouse.move(650, 400); pg.mouse.down(button="right")
+    pg.mouse.move(750, 460, steps=6); pg.mouse.up(button="right")
+    pg.wait_for_timeout(150)
+    q1 = pg.evaluate("__ct.pivotScreen('O2')")
+    assert abs(q1["x"] - q0["x"] - 100) < 2 and abs(q1["y"] - q0["y"] - 60) < 2, (q0, q1)
+    print(f"right-drag panned by ({q1['x']-q0['x']:.0f},{q1['y']-q0['y']:.0f}) px")
+
+    # after panning, a pivot drag must still land where the cursor is (worldOf un-pans)
+    gx_pre = pg.evaluate("__ct.geo.gx")
+    o4b = pg.evaluate("__ct.pivotScreen('O4')")
+    pg.mouse.move(o4b["x"], o4b["y"]); pg.mouse.down()
+    pg.mouse.move(o4b["x"] + 30, o4b["y"], steps=4); pg.mouse.up()
+    pg.wait_for_timeout(200)
+    assert abs(pg.evaluate("__ct.geo.gx") - gx_pre) > 0.1, "pivot still grabbable after pan"
+    print("pivot drag still tracks the cursor after a pan")
+
+    # (screen position can't be compared to q0 here — the drag above refit the view)
+    assert pg.evaluate("__ct.pan.x") != 0, "still panned"
+    pg.dblclick("canvas"); pg.wait_for_timeout(150)
+    assert pg.evaluate("__ct.pan.x") == 0 and pg.evaluate("__ct.pan.y") == 0, "dblclick clears pan"
+    print("double-click recentred")
+
+    # pan is clamped so the mechanism can't be lost off-screen
+    pg.mouse.move(650, 400); pg.mouse.down(button="right")
+    pg.mouse.move(9000, 9000, steps=4); pg.mouse.up(button="right")
+    pg.wait_for_timeout(150)
+    px, py = pg.evaluate("__ct.pan.x"), pg.evaluate("__ct.pan.y")
+    vw, vh = pg.evaluate("innerWidth"), pg.evaluate("innerHeight")
+    assert px <= vw*0.6 + 1 and py <= vh*0.6 + 1, (px, py, vw, vh)
+    print(f"pan clamped at ({px:.0f},{py:.0f}) for a {vw}x{vh} viewport")
+    pg.dblclick("canvas"); pg.wait_for_timeout(100)
+
+    # ---- 6. 1-degree sub-ticks ------------------------------------------
+    pg.select_option("#preset", "serpentine"); pg.wait_for_timeout(200)
+    sub = pg.evaluate("__ct.buildPoints()")
+    so = parse_dxf(sub)
+    lay = {}
+    for e in so:
+        if e["type"] == "LINE": lay[e[8][0]] = lay.get(e[8][0], 0) + 1
+    print("tick line counts by layer:", lay)
+    # -20..110 -> 14 majors, 13 more at odd 5s, 104 remaining 1-degree subs
+    assert lay["TICKS_MAJOR"] == 14, lay
+    assert lay["TICKS_MINOR"] == 13, lay
+    assert lay["TICKS_SUB"] == 131 - 14 - 13, lay
+    # every sub-tick must be distinct: 1-degree ticks quantised onto shared path
+    # samples would collapse into duplicates
+    subs = [(round(float(e[10][0]), 4), round(float(e[20][0]), 4)) for e in so
+            if e["type"] == "LINE" and e[8][0] == "TICKS_SUB"]
+    assert len(set(subs)) == len(subs), f"{len(subs)-len(set(subs))} duplicate sub-tick positions"
+    print(f"{len(subs)} sub-ticks, all distinct")
+
+    # ticks must sit on the same side of the curve as on screen
+    ticks = pg.evaluate("__ct.ticks.map(k=>({t:k.t,x:k.q.x,y:k.q.y,nx:k.nx,ny:k.ny,tier:k.tier}))")
+    tk = next(k for k in ticks if k["t"] == 70)
+    dxf70 = [e for e in so if e["type"] == "LINE" and e[8][0] == "TICKS_MAJOR"]
+    match = [e for e in dxf70
+             if abs(float(e[10][0]) - (tk["x"] + tk["nx"]*0.25)) < 1e-4
+             and abs(float(e[20][0]) - (-tk["y"] + -tk["ny"]*0.25)) < 1e-4]
+    assert match, "70F tick normal must mirror as a vector (same side as on screen)"
+    print("tick normals mirror consistently into CAD space")
+
+    # the serpentine cusps near 70F: the tangent flips 180 there, so the raw left-normal
+    # would throw every tick above it onto the far side of the line. Adjacent ticks must
+    # never point more than 90 deg apart.
+    flips = [(a["t"], b["t"]) for a, b in zip(ticks, ticks[1:])
+             if a["nx"]*b["nx"] + a["ny"]*b["ny"] < 0]
+    assert not flips, f"tick side flips between {flips}"
+    worst = min(a["nx"]*b["nx"] + a["ny"]*b["ny"] for a, b in zip(ticks, ticks[1:]))
+    print(f"no tick-side flips across {len(ticks)} ticks (tightest turn: dot={worst:.3f})")
+
+    # ---- 7. actuator rod end has an inner curve --------------------------
+    assert pg.evaluate("Object.keys(__ct.pathJ)").count("R") == 1
+    npts = pg.evaluate("__ct.pathJ.R.filter(Boolean).length")
+    assert npts > 100, npts
+    print(f"actuator rod end R traced over {npts} samples")
+
+    # ---- 8. nothing regressed -------------------------------------------
     assert not errs, errs
     pg.keyboard.press("Space"); pg.wait_for_timeout(100)
     print("spacebar demo toggle still works:", pg.evaluate("__ct.cfg.demo"))
