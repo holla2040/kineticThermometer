@@ -30,16 +30,19 @@ unrelated FABRIK inverse-kinematics demo kept for reference.
    dA, crank radius rA; must satisfy |dA−rA| < 24 and dA+rA > 42 with margin
    or the triangle can't close somewhere in the stroke).
 2. Two chained four-bars; indicator = stage-2 coupler point Q.
-3. **Fabrication rule:** all four fixed mounts (actuator anchor, bell-crank
-   pivot O2, rocker grounds O4 and O6) must sit on ONE side of the scale —
-   formally: every mount keeps ≥2.5″ clearance from the curve, and the
-   straight segment between any two mounts never crosses the curve.
+3. **Fabrication rule:** every fixed mount (actuator anchor, bell-crank
+   pivot O2, rocker grounds O4 and O6) keeps ≥2.5″ clearance from the path.
+   The companion rule — that no straight segment between two mounts may
+   cross the path — was DROPPED by the owner on 2026-07-19. Mounts may now
+   sit on either side of the path. Both search_geometry.py and
+   analyze_geometry.py stopped enforcing/reporting it.
 4. The owner's chosen design is the **Serpentine** preset (S-curve with
    end hook), since hand-tuned — see the preset section. Grand Arc is the
    alternate. The original presets were found by random search
    (~10^5–10^6 trials) in Python subject to: assembles across full stroke
    with margin, every temperature step moves visibly (min segment 0.15″,
-   max 2.2″, speed ratio ≤7), genuine curvature, and the mount rule above.
+   max 2.2″, speed ratio ≤7), genuine curvature, and the clearance rule
+   above (the search originally also enforced the dropped crossing rule).
 5. Coordinate system: O2 (bell-crank pivot) is the origin. Angles in the
    `anch` param are degrees. Canvas y is down (screen), math is consistent
    throughout — don't "fix" the sign.
@@ -243,13 +246,15 @@ persistence tests, screenshot and inspect. Keep doing this for changes.
    calibration table for the controller. Note the exports read the CURRENT
    geo, and the chosen Serpentine preset still violates the original search
    constraints (see the preset section) — re-confirm before cutting metal.
-2. **Marks in the path — settled on screen, still open for the DXF.**
-   The indicator is a ring the viewer reads the temperature *through*, so
-   anything drawn beside the path gets covered up. On screen this is now
-   solved: the divisions are cut across the path itself, the tick strokes
-   are gone, and the ring is transparent. The **DXF still puts its ticks
-   0.25″ off the curve** and exports no divisions at all — so the engraving
-   data does not yet match what the simulator shows. Resolve before cutting.
+2. ~~Marks in the path~~ — DONE 2026-07-19. The indicator is a ring the
+   viewer reads the temperature *through*, so anything beside the path is
+   covered up. Screen and DXF now agree: divisions cut ACROSS the path, one
+   per whole degree, no tick strokes alongside, labels every 10°F. The DXF
+   emits them on layer PATH_DIVISIONS from the same pathChunks drawScale
+   uses, so the two cannot drift apart.
+   `PATHW=1.0` in buildPoints is the engraved path width in inches — the one
+   number the screen can't supply, since canvas widths are in pixels. Make
+   it a field if it needs tuning against real stock.
    Method note from 2026-07-19: an earlier attempt bundled five changes at
    once (band width, restyled tiers, ring indicator, new field) and was
    reverted because the owner couldn't see the wanted change through the

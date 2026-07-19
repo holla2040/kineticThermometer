@@ -214,12 +214,11 @@
 
   // ---------- presets (found by numeric search; valid over full stroke) ----------
   // presets re-searched for the REAL actuator envelope: 24″ retracted, 42″ extended
-  // NOTE: grandarc still satisfies the mount rule (all fixed mounts on one side of the
-  // scale, no mount-to-mount line crossing the spline). The hand-tuned serpentine does
-  // NOT — O2 clears the curve by only 2.06″ (rule: ≥2.5″) and three mount pairs cross it
-  // (O2–ACT, O4–ACT, O6–ACT). See CLAUDE.md; unresolved, and a build blocker.
-  // tools/analyze_geometry.py re-measures both — re-run it after ANY geometry change,
-  // these numbers go stale the moment the preset moves.
+  // Mount rule, as it now stands: every fixed mount keeps ≥2.5″ clearance from the path.
+  // The mount-to-mount crossing rule was DROPPED by the owner on 2026-07-19 — mounts may
+  // sit on either side of the path now. The hand-tuned serpentine still fails clearance:
+  // O2 sits 2.06″ off. tools/analyze_geometry.py re-measures — re-run it after ANY
+  // geometry change, these numbers go stale the moment the preset moves.
   const PRESETS={
     serpentine:{rA:12.6151, dA:27.6388, anch:-133.1494, gx:12.9, gy:-6.0, L2:11.3701, L3:7.7705,
                 L4:7.0142, cu:3.5, cv:11.3, s1:-1, ox:6.9036, oy:-17.4189, L5:5.9, L6:14.0,
@@ -928,17 +927,27 @@
     const f=p=>F(p.x,p.y);
     for(let i=1;i<=NSAMP;i++)
       if(pathQ[i]&&pathQ[i-1]) DXF.line('SCALE_CURVE', f(pathQ[i-1]), f(pathQ[i]));
-    // ticks: equal temperature steps, so unequal spacing along the curve — that is the design
-    const OFF=0.25;                                // inches off the curve
+    // Divisions, one per whole degree, cut ACROSS the path — the same marks drawScale
+    // draws, from the same pathChunks, so the engraving matches the simulator. There are
+    // deliberately no tick strokes beside the path: the indicator is a ring the viewer
+    // reads the temperature through, and anything alongside would sit under it.
+    // ponytail: PATHW is the one number the screen can't supply — canvas widths are in
+    // pixels. Expose it as a field if it needs tuning against the real stock.
+    const PATHW=1.0;                               // engraved path width, inches
+    pathChunks.forEach(c=>{
+      const a=c.pts[c.pts.length-2], b=c.pts[c.pts.length-1];
+      const dx=b.x-a.x, dy=b.y-a.y, L=Math.hypot(dx,dy)||1;
+      // world normal, then mirrored into CAD space as a vector (y flips, so ny negates)
+      const q=f(b), nx=-dy/L, ny=-(dx/L);
+      DXF.line('PATH_DIVISIONS', {x:q.x-nx*PATHW/2, y:q.y-ny*PATHW/2},
+                                 {x:q.x+nx*PATHW/2, y:q.y+ny*PATHW/2});
+    });
+    // labels every 10°, just clear of the path edge, matching the screen layout
     tickCache.forEach(k=>{
-      // mirroring y flips the normal as a vector, so the tick stays on the same side as on screen
-      const q=f(k.q), nx=k.nx, ny=-k.ny, len=k.major?0.75:0.4;
-      DXF.line(k.major?'TICKS_MAJOR':'TICKS_MINOR',
-               {x:q.x+nx*OFF, y:q.y+ny*OFF}, {x:q.x+nx*(OFF+len), y:q.y+ny*(OFF+len)});
-      if(k.major){
-        DXF.point('POINTS', q);                    // snap target: exact indicator position at this temp
-        DXF.text('LABELS',{x:q.x+nx*(OFF+len+0.28)-0.18, y:q.y+ny*(OFF+len+0.28)-0.11}, 0.28, k.t+'F');
-      }
+      if(!k.major) return;
+      const q=f(k.q), nx=k.nx, ny=-k.ny, off=PATHW*0.9;
+      DXF.point('POINTS', q);                      // snap target: exact indicator position
+      DXF.text('LABELS',{x:q.x+nx*off-0.18, y:q.y+ny*off-0.11}, 0.28, k.t+'F');
     });
     const p=pose(cfg.temp);
     [['O2',p.O2],['O4_ROCKER1',p.O4],['O6_ROCKER2',p.O6],['ACT_ANCHOR',p.anchor]].forEach(m=>{

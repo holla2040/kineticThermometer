@@ -6,9 +6,11 @@ Finds two-stage four-bar geometries driven by a 24-42" linear actuator
   - the chain assembles across the entire stroke (with margin),
   - every temperature step produces visible indicator motion,
   - the coupler curve genuinely curves (serpentine: turns both ways),
-  - ALL four fixed mounts sit on one side of the scale curve:
-      * every mount keeps >= 2.5" clearance from the curve, and
-      * no straight segment between two mounts crosses the curve.
+  - every fixed mount keeps >= 2.5" clearance from the curve.
+
+The original search also required that no straight segment between two mounts
+cross the curve. The owner dropped that requirement on 2026-07-19, so it is no
+longer enforced here.
 
 This reproduces the search that produced the presets baked into index.html.
 Parameter tuple order:
@@ -65,12 +67,6 @@ def make_path(g, samples=61):
     return pts
 
 
-def seg_int(a, b, c, d):
-    def ccw(p, q, r):
-        return (r[1]-p[1])*(q[0]-p[0]) > (q[1]-p[1])*(r[0]-p[0])
-    return ccw(a, c, d) != ccw(b, c, d) and ccw(a, b, c) != ccw(a, b, d)
-
-
 def pt_seg_dist(p, a, b):
     ax, ay = a; bx, by = b; px, py = p
     dx, dy = bx-ax, by-ay
@@ -87,7 +83,9 @@ def grounds_of(g):
             (g[3], g[4]), (g[11], g[12])]
 
 
-def mounts_same_side(g, pts, clearance=2.5, max_rg=28.0):
+def mounts_ok(g, pts, clearance=2.5, max_rg=28.0):
+    # renamed from mounts_same_side: the same-side/crossing test is gone, so this now
+    # only checks the clearance rule plus how tightly the four mounts cluster
     G = grounds_of(g)
     cx = sum(p[0] for p in G)/4; cy = sum(p[1] for p in G)/4
     if max(math.hypot(p[0]-cx, p[1]-cy) for p in G) > max_rg:
@@ -96,11 +94,6 @@ def mounts_same_side(g, pts, clearance=2.5, max_rg=28.0):
         for i in range(1, len(pts)):
             if pt_seg_dist(m, pts[i-1], pts[i]) < clearance:
                 return False
-    for i in range(4):
-        for j in range(i+1, 4):
-            for k in range(1, len(pts)):
-                if seg_int(G[i], G[j], pts[k-1], pts[k]):
-                    return False
     return True
 
 
@@ -161,7 +154,7 @@ if __name__ == '__main__':
         m = metrics(pts)
         if m is None or not serpentine_ok(m):
             continue
-        if not mounts_same_side(g, pts):
+        if not mounts_ok(g, pts):
             continue
         cnt += 1
         s = serpentine_score(m)

@@ -307,38 +307,67 @@ with sync_playwright() as p:
     print(f"pan clamped at ({px:.0f},{py:.0f}) for a {vw}x{vh} viewport")
     pg.dblclick("canvas"); pg.wait_for_timeout(100)
 
-    # ---- 6. ticks ---------------------------------------------------
+    # ---- 6. path divisions in the DXF -----------------------------------
     pg.select_option("#preset", "serpentine"); pg.wait_for_timeout(200)
     sub = pg.evaluate("__ct.buildPoints()")
     so = parse_dxf(sub)
     lay = {}
     for e in so:
         if e["type"] == "LINE": lay[e[8][0]] = lay.get(e[8][0], 0) + 1
-    print("tick line counts by layer:", lay)
-    # -20..110 every 5 deg -> 27 ticks, 14 of them on the 10s
-    assert lay["TICKS_MAJOR"] == 14, lay
-    assert lay["TICKS_MINOR"] == 13, lay
-    assert "TICKS_SUB" not in lay, "1-degree sub-ticks were removed"
-    assert sorted(lay) == ["SCALE_CURVE", "TICKS_MAJOR", "TICKS_MINOR"], sorted(lay)
+    print("line counts by layer:", lay)
+    # the export must match the screen: divisions across the path, and NO tick strokes
+    # beside it -- the indicator ring would cover anything alongside
+    assert sorted(lay) == ["PATH_DIVISIONS", "SCALE_CURVE"], sorted(lay)
+    assert not any(k.startswith("TICKS") for k in lay), lay
+    chunks = pg.evaluate("__ct.chunks.length")
+    assert lay["PATH_DIVISIONS"] == chunks == 130, (lay, chunks)
 
-    # ticks must sit on the same side of the curve as on screen
+    # every division is centred on the path and exactly one path-width long
     ticks = pg.evaluate("__ct.ticks.map(k=>({t:k.t,x:k.q.x,y:k.q.y,nx:k.nx,ny:k.ny,major:k.major}))")
-    assert len(ticks) == 27, len(ticks)
-    tk = next(k for k in ticks if k["t"] == 70)
-    dxf70 = [e for e in so if e["type"] == "LINE" and e[8][0] == "TICKS_MAJOR"]
-    match = [e for e in dxf70
-             if abs(float(e[10][0]) - (tk["x"] + tk["nx"]*0.25)) < 1e-4
-             and abs(float(e[20][0]) - (-tk["y"] + -tk["ny"]*0.25)) < 1e-4]
-    assert match, "70F tick normal must mirror as a vector (same side as on screen)"
-    print("tick normals mirror consistently into CAD space")
+    ends = pg.evaluate("__ct.chunks.map(c=>c.pts[c.pts.length-1])")
+    for e in so:
+        if e["type"] != "LINE" or e[8][0] != "PATH_DIVISIONS": continue
+        x0, y0, x1, y1 = (float(e[c][0]) for c in (10, 20, 11, 21))
+        assert abs(math.hypot(x1-x0, y1-y0) - 1.0) < 1e-6, "division = 1.0in path width"
+        mx, my = (x0+x1)/2, (y0+y1)/2
+        near = min(math.hypot(mx-q["x"], my+q["y"]) for q in ends)   # y flipped in CAD
+        assert near < 1e-6, f"division not centred on a chunk boundary (off {near})"
+    print(f"{lay['PATH_DIVISIONS']} divisions, each 1.00in and centred on a whole degree")
 
-    # the serpentine cusps: the tangent flips 180 there, so the raw left-normal would throw
-    # every tick past it onto the far side of the line. Adjacent ticks must stay together.
-    flips = [(a["t"], b["t"]) for a, b in zip(ticks, ticks[1:])
-             if a["nx"]*b["nx"] + a["ny"]*b["ny"] < 0]
-    assert not flips, f"tick side flips between {flips}"
-    worst = min(a["nx"]*b["nx"] + a["ny"]*b["ny"] for a, b in zip(ticks, ticks[1:]))
-    print(f"no tick-side flips across {len(ticks)} ticks (tightest turn: dot={worst:.3f})")
+    # a division must be perpendicular to the path. Reference tangent comes from pose()
+    # either side of the boundary temperature -- independent of the drawing code, and
+    # local: a whole-degree chord is a bad proxy where the path turns 63 degrees.
+    tangents = pg.evaluate("""__ct.chunks.map(c => {
+      const T = c.t + 0.5;                       // c.t is the chunk midpoint
+      const a = __ct.pose(T - 0.05), b = __ct.pose(T + 0.05);
+      if (!a.valid || !b.valid) return null;
+      return {T, x: b.Q.x - a.Q.x, y: -(b.Q.y - a.Q.y)};   // mirrored into CAD space
+    })""")
+    divs = [e for e in so if e["type"] == "LINE" and e[8][0] == "PATH_DIVISIONS"]
+    worst, worst_at = 0.0, None
+    for e in divs:
+        x0, y0, x1, y1 = (float(e[c][0]) for c in (10, 20, 11, 21))
+        mx, my = (x0+x1)/2, (y0+y1)/2
+        i = min(range(len(ends)), key=lambda k: math.hypot(mx-ends[k]["x"], my+ends[k]["y"]))
+        t = tangents[i]
+        if not t: continue
+        tl = math.hypot(t["x"], t["y"]) or 1
+        dl = math.hypot(x1-x0, y1-y0) or 1
+        c = abs(((x1-x0)*t["x"] + (y1-y0)*t["y"]) / (tl*dl))
+        if c > worst: worst, worst_at = c, t["T"]
+    # Tolerance, not zero: the renderer takes the tangent from the chunk's last sub-step
+    # (a backward difference), which diverges from a centred one exactly where the path
+    # turns hardest -- there is a near-cusp at 43.5F where it slows to 0.111 in/degF and
+    # swings 10 degrees. Typical divisions come in under 0.5 degrees.
+    assert worst < 0.15, f"divisions must be perpendicular (worst |cos| {worst} at {worst_at}F)"
+    print(f"divisions perpendicular to the path (worst |cos| {worst:.4f} at {worst_at}F)")
+
+    # 10F labels survive, and land clear of the path
+    labels = [e for e in so if e["type"] == "TEXT" and e[8][0] == "LABELS"]
+    degs = sorted(int(e[1][0][:-1]) for e in labels if e[1][0].endswith("F")
+                  and e[1][0][:-1].lstrip("-").isdigit())
+    assert [d for d in degs if d % 10 == 0 and -20 <= d <= 110] == list(range(-20, 120, 10)), degs
+    print(f"{len(degs)} degree labels: {degs[0]}F..{degs[-1]}F every 10F")
 
     # ---- 6b. envelope bounding box ---------------------------------------
     pg.select_option("#preset", "serpentine"); pg.wait_for_timeout(250)

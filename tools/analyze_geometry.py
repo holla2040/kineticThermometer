@@ -65,7 +65,7 @@ JS = """
     if (d < minDot) { minDot = d; minAt = tk[i].t; }
   }
 
-  // mounts: clearance from the curve, and do mount-to-mount lines cross it
+  // mounts: clearance from the curve. The mount-to-mount crossing rule was dropped.
   const p0 = __ct.pose(c.temp);
   const mounts = {O2: p0.O2, O4: p0.O4, O6: p0.O6, ACT: p0.anchor};
   const clear = {};
@@ -74,22 +74,10 @@ JS = """
     for (const q of ok) m = Math.min(m, Math.hypot(q.x-mounts[k].x, q.y-mounts[k].y));
     clear[k] = m;
   }
-  const seg = (a,b,c2,d) => {
-    const s=(p,q,r)=>(r.x-p.x)*(q.y-p.y)-(q.x-p.x)*(r.y-p.y);
-    const d1=s(a,b,c2), d2=s(a,b,d), d3=s(c2,d,a), d4=s(c2,d,b);
-    return ((d1>0)!==(d2>0)) && ((d3>0)!==(d4>0));
-  };
-  const names = Object.keys(mounts), crossings = [];
-  for (let i=0;i<names.length;i++) for (let j=i+1;j<names.length;j++) {
-    let hit = 0;
-    for (let k=1;k<ok.length;k++)
-      if (seg(mounts[names[i]], mounts[names[j]], ok[k-1], ok[k])) hit++;
-    if (hit) crossings.push(names[i]+"-"+names[j]+" ("+hit+")");
-  }
 
   // actuator travel actually used
   const lmin = 24 + c.extMin, lmax = 24 + c.extMax;
-  return {bad, total, seg10, steps, minDot, minAt, clear, crossings,
+  return {bad, total, seg10, steps, minDot, minAt, clear,
           lmin, lmax, dAmrA: Math.abs(g.dA-g.rA), dApluslA: g.dA+g.rA};
 }
 """
@@ -128,5 +116,3 @@ print()
 print("mount clearance from the scale curve (rule: >= 2.5\"):")
 for k, v in r["clear"].items():
     print(f"  {k:5} {v:6.2f}\"  {'OK' if v >= 2.5 else '** TOO CLOSE **'}")
-print("mount-to-mount lines crossing the curve:",
-      ", ".join(r["crossings"]) if r["crossings"] else "none - OK")
