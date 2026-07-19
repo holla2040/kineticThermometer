@@ -7,8 +7,13 @@ point — crawls along the serpentine curve it traces. The temperature scale
 is engraved along that curve, with equal temperature steps landing at
 unequal spacing. Viewers are meant to puzzle over how it works.
 
-![The design simulator: actuator, bell crank, two four-bar linkages, and the
-temperature scale traced by the stage-2 coupler point](images/index.png)
+![The design simulator sweeping −20 to 110°F: actuator, bell crank, two
+four-bar linkages, and the temperature path traced by the stage-2 coupler
+point](images/index.gif)
+
+One frame per degree, so the animation gives every degree equal *time* —
+which is why the indicator crawls where the path is compressed and races
+where it opens out. That unevenness is the mechanism, not the recording.
 
 ## Files
 
