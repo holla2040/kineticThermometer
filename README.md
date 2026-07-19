@@ -1,5 +1,7 @@
 # Kinetic Thermometer
 
+**[Live demo →](https://holla2040.github.io/kineticThermometer/)**
+
 An outdoor garden sculpture that displays temperature: a linear actuator
 (24″ retracted / 42″ extended, 18″ stroke) drives a bell crank into two
 chained four-bar linkages, and the indicator — the second stage's coupler
@@ -17,7 +19,9 @@ where it opens out. That unevenness is the mechanism, not the recording.
 
 ## Files
 
-- `index.html` — the interactive design simulator. Open in any browser.
+- `index.html` — the interactive design simulator, served live at
+  <https://holla2040.github.io/kineticThermometer/> (GitHub Pages, straight
+  off `main`, so a push updates it). Or just open the file in any browser.
   No dependencies, fully self-contained. Drag the mounts and joint pins to
   reshape the linkage, tune the scale range and actuator excursion, undo
   with Ctrl/Cmd+Z, pan by right-dragging, rotate the view in 10° steps, and
