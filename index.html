@@ -535,15 +535,10 @@
   function drawIndicator(p){
     if(!p.Q) return;
     const s=TX(p.Q);
-    ctx.save();
-    ctx.shadowColor=tempColor(cfg.temp); ctx.shadowBlur=16;
-    ctx.beginPath(); ctx.arc(s.x,s.y,9,0,Math.PI*2);
-    ctx.fillStyle=tempColor(cfg.temp); ctx.fill();
-    ctx.restore();
+    // transparent, same diameter as before: the path and its divisions read straight
+    // through the middle, so you can count the marks the indicator is sitting on
     ctx.beginPath(); ctx.arc(s.x,s.y,9,0,Math.PI*2);
     ctx.strokeStyle='#e8edf3'; ctx.lineWidth=2; ctx.stroke();
-    ctx.beginPath(); ctx.arc(s.x,s.y,3,0,Math.PI*2);
-    ctx.fillStyle='#10141b'; ctx.fill();
   }
 
   function updateReadout(p){

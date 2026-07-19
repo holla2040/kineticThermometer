@@ -125,14 +125,39 @@ flow plus both DXF exports (`python3 tools/verify_export.py [outdir]`).
 - Hover: component highlight + tooltip naming the part + its sliders, and
   the matching slider rows highlight in the panel (COMPINFO / hlSliders).
 - Collapsible <details> sections for Stage 1 / Stage 2 / Actuator drive.
-- Scale ticks: **every 1°**, tiered — 10° labeled major, 5° minor, 1° sub
-  (tickList(), cached in tickCache by rebuildPath, not recomputed per frame).
-  Positions come from pose() directly, NOT from indexing the 140-sample
-  path: at 1° steps several ticks land on one sample and the spacing — the
+- **The path and its divisions.** The owner calls the traced curve the
+  **path**. It runs tmin→tmax and its colour goes blue → orange → red
+  (tempColor). It is drawn as one chunk per whole degree (buildChunks,
+  CHUNKSUB=6 sub-samples each, cached in pathChunks by rebuildPath), and a
+  short black **division** is stroked ACROSS the path at every chunk
+  boundary — 10 divisions between labelled marks, every major and minor
+  tick landing exactly on one.
+  History worth not repeating: the divisions used to be an accident. The
+  path was stroked in 140 sample segments, each painting a drop shadow that
+  overpainted the previous segment, and that overpaint showed as the black
+  line. The shadow was offset in +y ONLY, so divisions appeared where the
+  path climbs and vanished entirely where it descends — none at all between
+  60 and 80°F. Both the shadow and that mechanism are gone. Divisions are
+  explicit now; do not reintroduce a drop shadow.
+- **No tick strokes.** tickList() still runs every 5° (major on the 10s,
+  cached in tickCache) but ONLY the 10° labels are drawn, sat 14px off
+  their own division. The white major/minor comb beside the path was
+  removed at the owner's request — it repeated what the divisions already
+  say. 1° sub-ticks were built and removed too. Don't bring either back.
+  Note the DXF still exports TICKS_MAJOR/TICKS_MINOR strokes; screen and
+  export deliberately differ, because the division work was scoped to the
+  screen only.
+  tickList positions come from pose() directly, NOT from indexing the
+  140-sample path: several ticks land on one sample and the spacing — the
   whole point of this scale — comes out wrong. tickList also carries the
   normal's side forward from tick to tick, because a coupler curve can cusp
   and flip the tangent 180°, which would throw the rest of the comb to the
   far side of the line. Don't "simplify" either of those away.
+- **The indicator is a transparent ring** (r=9, 2px outline, no fill, no
+  centre dot) so the path and its divisions read straight through it — the
+  viewer counts the marks the ring is sitting on. The real sculpture's
+  indicator will be a ring with a hole for exactly this reason. It no
+  longer carries the temperature colour; the path underneath does.
 - "Inner curves" checkbox traces every moving joint (R, B, C, P, D) as
   dashed paths — R is the actuator rod end.
 - Settings persist to localStorage key `couplerThermometer.v2` (guarded
@@ -143,8 +168,9 @@ flow plus both DXF exports (`python3 tools/verify_export.py [outdir]`).
 - **Named designs**: type a name before Save and it also goes into the map
   under `couplerThermometer.saves`; the name field then clears and the
   "Load a saved design…" dropdown holds the record. Delete removes the
-  entry named in the field (loading from the dropdown refills it). Saving
-  with the name empty still updates the auto-restore slot.
+  entry named in the field. Recalling from the dropdown deliberately does
+  NOT refill the name field, so deleting a just-recalled design means typing
+  its name. Saving with the name empty still updates the auto-restore slot.
 - **DXF export for Fusion** (two buttons, R12 ASCII, inches, y flipped to
   CAD convention). `showSaveFilePicker` gives a real Save dialog where the
   browser has one, else it falls back to an `<a download>`:
@@ -158,10 +184,10 @@ flow plus both DXF exports (`python3 tools/verify_export.py [outdir]`).
     ticks with °F labels, the 4 mounts, and POINT entities at every 10°
     tick and mount to snap to.
   Curves are line segments, not splines — fit a spline in Fusion if wanted.
-- Public view: uncheck "Show mechanism" — only scale + indicator bead.
+- Public view: uncheck "Show mechanism" — only the path + indicator ring.
 - Debug hook for tests: `window.__ct` = {pivotScreen(name), geo, cfg, pose,
-  pan, rebuild(), ticks, pathJ, undoDepth(), buildParts(), buildPoints(),
-  dump()}. The builders return DXF text so tests can assert on the export
+  pan, rebuild(), ticks, chunks, pathJ, undoDepth(), buildParts(),
+  buildPoints(), dump()}. The builders return DXF text so tests can assert on the export
   without a download. `dump()` returns geo+cfg as JSON — this is how the
   owner hands over a hand-tuned design: `copy(__ct.dump())` in the console.
 
@@ -181,18 +207,17 @@ persistence tests, screenshot and inspect. Keep doing this for changes.
    calibration table for the controller. Note the exports read the CURRENT
    geo, and the chosen Serpentine preset still violates the original search
    constraints (see the preset section) — re-confirm before cutting metal.
-2. **Ticks belong IN the line, not beside it.** The indicator will be a
-   **ring with a hole in the middle** — the viewer reads the temperature
-   *through* the ring — so tick marks alongside the curve get covered up.
-   Ticks currently sit outside the line (offset 5px, lengths 3.5/7/12) and
-   the DXF puts them 0.25″ off the curve. They should straddle it instead.
-   An attempt at this was reverted on 2026-07-19: it worked, but it also
-   changed the line to a physical band width, restyled every tick tier,
-   swapped the bead indicator for a ring, and added a "band width" field —
-   the owner couldn't see the one wanted change through the four unwanted
-   ones. Redo it as the single change: move the tick endpoints from
-   `+5..+5+len` to straddling the curve. Leave the line, the tiers, the
-   indicator and the field list alone unless asked.
+2. **Marks in the path — settled on screen, still open for the DXF.**
+   The indicator is a ring the viewer reads the temperature *through*, so
+   anything drawn beside the path gets covered up. On screen this is now
+   solved: the divisions are cut across the path itself, the tick strokes
+   are gone, and the ring is transparent. The **DXF still puts its ticks
+   0.25″ off the curve** and exports no divisions at all — so the engraving
+   data does not yet match what the simulator shows. Resolve before cutting.
+   Method note from 2026-07-19: an earlier attempt bundled five changes at
+   once (band width, restyled tiers, ring indicator, new field) and was
+   reverted because the owner couldn't see the wanted change through the
+   unwanted ones. Land one change at a time here.
 3. **.linkage2 export** — write the chosen geometry as XML for David
    Rector's Linkage program (Windows; blog.rectorsquid.com). Not started.
 4. Unresolved question: owner once asked for "beginning and ending point
