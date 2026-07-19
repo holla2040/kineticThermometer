@@ -1,10 +1,15 @@
-"""Drives index.html headless to check named saves and the DXF export.
+"""Drives index.html headless and checks the simulator end to end.
 
     pip install playwright && playwright install chromium
     python3 tools/verify_export.py [outdir]
 
-Writes parts.dxf / points.dxf to outdir (default /tmp) so you can eyeball them,
-and asserts the exported geometry matches the live `geo` values.
+Covers: named saves and recall, both DXF exports (geometry asserted against the
+live `geo` values, all three save-dialog outcomes), drag stopping auto-cycle,
+undo, panning, the tick layout and its behaviour across the path's cusp, the
+envelope bounding box and its checkbox, and view rotation.
+
+Writes parts.dxf / points.dxf to outdir (default /tmp) so you can eyeball them.
+Run this after any change to index.html.
 """
 import math, os, sys, tempfile
 from playwright.sync_api import sync_playwright
@@ -386,6 +391,67 @@ with sync_playwright() as p:
     assert pg.is_checked("#showBox") is False, "unchecked state must survive reload"
     print("box visibility persists through save + reload")
     pg.check("#showBox"); pg.click("#save"); pg.wait_for_timeout(150)
+
+    # ---- 6c. view rotation ------------------------------------------------
+    pg.select_option("#preset", "serpentine"); pg.wait_for_timeout(250)
+    el = pg.query_selector("#rot")
+    assert (el.get_attribute("min"), el.get_attribute("max"), el.get_attribute("step")) \
+        == ("0", "360", "10"), "0..360 in 10 degree steps"
+
+    def setrot(a):
+        pg.evaluate("a => { const e = document.getElementById('rot');"
+                    "e.value = a; e.dispatchEvent(new Event('input')); }", a)
+        pg.wait_for_timeout(130)
+        return pg.evaluate("__ct.cfg.rot")
+
+    assert setrot(215) == 220 and setrot(7) == 10, "off-step values must snap to 10"
+
+    def o2o4_angle():
+        a = pg.evaluate("__ct.pivotScreen('O2')"); c = pg.evaluate("__ct.pivotScreen('O4')")
+        return math.degrees(math.atan2(c["y"]-a["y"], c["x"]-a["x"]))
+
+    setrot(0); base = o2o4_angle(); bb0 = pg.evaluate("__ct.bbox")
+    for a in (10, 90, 180, 210, 350, 360):
+        assert setrot(a) == a
+        got = (o2o4_angle() - base + 540) % 360 - 180
+        # counterclockwise on screen. atan2 is measured in y-down coords, where a
+        # counterclockwise turn DECREASES the angle -- hence -a, not +a.
+        want = ((-a + 180) % 360) - 180
+        assert abs(((got - want + 540) % 360) - 180) < 0.5, (a, got, want)
+        bb = pg.evaluate("__ct.bbox")
+        # rotating is a view change only -- real dimensions must not move
+        assert abs(bb["w"]-bb0["w"]) < 1e-9 and abs(bb["h"]-bb0["h"]) < 1e-9, (a, bb)
+    print(f"rotation turns the view at every step; envelope stays "
+          f"{bb0['w']:.2f} x {bb0['h']:.2f}in")
+
+    # worldOf must invert the rotation, or grabbed pivots drift away from the cursor.
+    # Measured MID-drag: releasing refits the view and would mask the result.
+    for a in (0, 90, 210):
+        setrot(a)
+        o4 = pg.evaluate("__ct.pivotScreen('O4')")
+        pg.mouse.move(o4["x"], o4["y"]); pg.mouse.down()
+        pg.mouse.move(o4["x"]+60, o4["y"]+40, steps=6)
+        mid = pg.evaluate("__ct.pivotScreen('O4')")
+        pg.mouse.up(); pg.wait_for_timeout(180)
+        pg.keyboard.press("Control+z"); pg.wait_for_timeout(180)
+        assert abs(mid["x"]-o4["x"]-60) < 2 and abs(mid["y"]-o4["y"]-40) < 2, (a, o4, mid)
+    print("grabbed pivots follow the cursor exactly at 0/90/210 degrees")
+
+    setrot(140); pg.fill("#sname", ""); pg.click("#save"); pg.wait_for_timeout(200)
+    pg.reload(); pg.wait_for_timeout(800)
+    assert pg.evaluate("__ct.cfg.rot") == 140, pg.evaluate("__ct.cfg.rot")
+    assert pg.input_value("#rot") == "140" and "140" in pg.inner_text("#rotV")
+    print("rotation is saved and restored, slider and label follow")
+
+    # Reset preset squares the view back up, and undo puts the rotation back
+    setrot(120)
+    pg.click("#reset"); pg.wait_for_timeout(250)
+    assert pg.evaluate("__ct.cfg.rot") == 0, pg.evaluate("__ct.cfg.rot")
+    assert pg.input_value("#rot") == "0" and "0°" in pg.inner_text("#rotV")
+    pg.keyboard.press("Control+z"); pg.wait_for_timeout(250)
+    assert pg.evaluate("__ct.cfg.rot") == 120, pg.evaluate("__ct.cfg.rot")
+    print("Reset zeroes rotation; undo restores it")
+    setrot(0); pg.click("#save"); pg.wait_for_timeout(150)
 
     # ---- 7. actuator rod end has an inner curve --------------------------
     assert pg.evaluate("Object.keys(__ct.pathJ)").count("R") == 1

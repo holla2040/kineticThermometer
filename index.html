@@ -131,6 +131,10 @@
     <label class="chk"><input type="checkbox" id="ghost" checked> Inner curves</label>
     <label class="chk"><input type="checkbox" id="showBox" checked> Bounding box</label>
   </div>
+  <div class="row" style="margin-top:10px;">
+    <label>Rotate view <b id="rotV">0°</b></label>
+    <input type="range" id="rot" min="0" max="360" value="0" step="10">
+  </div>
 
   <details class="fold">
     <summary>Stage 1 four-bar (inches)</summary>
@@ -222,7 +226,7 @@
   };
 
   const geo=Object.assign({}, PRESETS.serpentine);
-  const cfg={temp:70, tmin:-20, tmax:110, demo:true, reveal:true, ticks:true, ghost:true, showBox:true, speed:0.1, tdir:false,
+  const cfg={temp:70, tmin:-20, tmax:110, demo:true, reveal:true, ticks:true, ghost:true, showBox:true, speed:0.1, tdir:false, rot:0,
              extMin:0, extMax:15.5,    // used slice of the actuator stroke, in inches of extension
                                        // 15.5 is near the ceiling for the serpentine preset:
                                        // dA+rA=40.15, so past ~15.65″ the drive triangle won't close
@@ -277,7 +281,7 @@
 
   // ---------- path cache ----------
   const NSAMP=140;
-  let pathQ=[], pathJ={R:[],B:[],C:[],P:[],D:[]}, pathValid=true, pathWhy=null, pathLen=0, speedRatio=1, view={s:1,ox:0,oy:0}, tickCache=[], pathChunks=[], bbox=null;
+  let pathQ=[], pathJ={R:[],B:[],C:[],P:[],D:[]}, pathValid=true, pathWhy=null, pathLen=0, speedRatio=1, view={s:1,ox:0,oy:0,cx:0,cy:0}, tickCache=[], pathChunks=[], bbox=null;
   // One chunk per whole degree, each sampled finely enough to stay smooth where the path
   // moves fastest. Boundaries fall exactly on integer temperatures — that is what puts the
   // divisions on the tick marks. Cached with the path, not rebuilt per frame.
@@ -340,37 +344,75 @@
   }
   function drawBBox(){
     if(!bbox) return;
-    const a=TX({x:bbox.x0,y:bbox.y0}), b=TX({x:bbox.x1,y:bbox.y1});
+    // a polygon, not strokeRect: the box is a world-space rectangle, so it has to turn
+    // with the view. Labels stay horizontal and sit outside their own edge.
+    const c=[{x:bbox.x0,y:bbox.y0},{x:bbox.x1,y:bbox.y0},
+             {x:bbox.x1,y:bbox.y1},{x:bbox.x0,y:bbox.y1}].map(TX);
     ctx.save();
     ctx.setLineDash([6,5]);
     ctx.strokeStyle='rgba(138,148,166,.4)'; ctx.lineWidth=1;
-    ctx.strokeRect(a.x, a.y, b.x-a.x, b.y-a.y);
+    ctx.beginPath();
+    c.forEach((q,i)=>i?ctx.lineTo(q.x,q.y):ctx.moveTo(q.x,q.y));
+    ctx.closePath(); ctx.stroke();
     ctx.setLineDash([]);
     ctx.fillStyle='rgba(159,176,195,.85)'; ctx.font='600 11px -apple-system,sans-serif';
-    ctx.textAlign='center'; ctx.textBaseline='bottom';
-    ctx.fillText(bbox.w.toFixed(1)+'″', (a.x+b.x)/2, a.y-5);
-    ctx.textAlign='right'; ctx.textBaseline='middle';
-    ctx.fillText(bbox.h.toFixed(1)+'″', a.x-6, (a.y+b.y)/2);
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    const mid={x:(c[0].x+c[2].x)/2, y:(c[0].y+c[2].y)/2};
+    const edgeLabel=(a,b,txt)=>{
+      const mx=(a.x+b.x)/2, my=(a.y+b.y)/2;
+      let ux=mx-mid.x, uy=my-mid.y; const L=Math.hypot(ux,uy)||1;
+      ctx.fillText(txt, mx+ux/L*13, my+uy/L*13);
+    };
+    edgeLabel(c[0],c[1], bbox.w.toFixed(1)+'″');
+    edgeLabel(c[0],c[3], bbox.h.toFixed(1)+'″');
     ctx.restore();
+  }
+  // View rotation, cfg.rot degrees, about the UNROTATED content centre so the design spins
+  // in place. Everything on the canvas goes through TX, so rotating here rotates the lot.
+  // Canvas y points DOWN, so the standard rotation matrix reads clockwise on screen.
+  // Negate it — the slider counts counterclockwise.
+  const rotRad=()=>-cfg.rot*DEG;
+  function rotPt(p){
+    if(!cfg.rot) return p;
+    const a=rotRad(), c=Math.cos(a), s=Math.sin(a);
+    const dx=p.x-view.cx, dy=p.y-view.cy;
+    return {x:view.cx+dx*c-dy*s, y:view.cy+dx*s+dy*c};
+  }
+  // direction vectors rotate too, but without the centre offset
+  function rotDir(x,y){
+    if(!cfg.rot) return {x,y};
+    const a=rotRad(), c=Math.cos(a), s=Math.sin(a);
+    return {x:x*c-y*s, y:x*s+y*c};
   }
   function fitView(){
     if(dragPivot) return;              // keep the view still while dragging a mount
-    let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
-    const add=p=>{if(!p)return; x0=Math.min(x0,p.x);y0=Math.min(y0,p.y);x1=Math.max(x1,p.x);y1=Math.max(y1,p.y);};
+    const pts=[];
+    const add=p=>{if(p) pts.push(p);};
     pathQ.forEach(add);
     const p0=pose(cfg.tmin), p1=pose(cfg.tmax);
     [p0,p1].forEach(p=>{['O2','O4','O6','anchor','B','C','P','D'].forEach(k=>add(p[k]));});
+    // unrotated bounds first — their centre is the pivot, and it must not move as the
+    // design turns, or rotating would walk the drawing across the screen
+    let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
+    pts.forEach(p=>{x0=Math.min(x0,p.x);y0=Math.min(y0,p.y);x1=Math.max(x1,p.x);y1=Math.max(y1,p.y);});
     if(x0>x1){x0=-10;x1=10;y0=-10;y1=10;}
-    const mw=x1-x0+9, mh=y1-y0+9;
+    view.cx=(x0+x1)/2; view.cy=(y0+y1)/2;
+    // then fit to the ROTATED bounds, so a turned design still fits the viewport
+    let rx0=1e9,ry0=1e9,rx1=-1e9,ry1=-1e9;
+    pts.forEach(p=>{const q=rotPt(p);
+      rx0=Math.min(rx0,q.x);ry0=Math.min(ry0,q.y);rx1=Math.max(rx1,q.x);ry1=Math.max(ry1,q.y);});
+    if(rx0>rx1){rx0=-10;rx1=10;ry0=-10;ry1=10;}
+    const mw=rx1-rx0+9, mh=ry1-ry0+9;
     const leftEdge=(W>640)?318:24;              // keep clear of the control panel
     const px=W-leftEdge-40, py=H-50;
     view.s=Math.min(px/mw, py/mh);
-    view.ox=leftEdge+(W-leftEdge-(x0+x1)*view.s)/2;
-    view.oy=(H-(y0+y1)*view.s)/2;
+    view.ox=leftEdge+(W-leftEdge-(rx0+rx1)*view.s)/2;
+    view.oy=(H-(ry0+ry1)*view.s)/2;
   }
   // pan rides on top of the auto-fit, so a refit keeps wherever the user dragged the view to
   const pan={x:0,y:0};
-  const TX=p=>({x:p.x*view.s+view.ox+pan.x, y:p.y*view.s+view.oy+pan.y});
+  const TX=p=>{const q=rotPt(p);
+    return {x:q.x*view.s+view.ox+pan.x, y:q.y*view.s+view.oy+pan.y};};
 
   // ---------- colors ----------
   function tempColor(t){
@@ -475,8 +517,8 @@
     ctx.fillStyle='#c9d4e2'; ctx.font='600 12px -apple-system,sans-serif';
     tickCache.forEach(k=>{
       if(!k.major) return;
-      const q=TX(k.q);
-      ctx.fillText(k.t+'°', q.x+k.nx*14, q.y+k.ny*14);
+      const q=TX(k.q), n=rotDir(k.nx,k.ny);   // the normal is a world vector: turn it too
+      ctx.fillText(k.t+'°', q.x+n.x*14, q.y+n.y*14);
     });
   }
 
@@ -693,6 +735,11 @@
     cfg.tdir=e.target.checked;
     rebuildPath();                     // temp→position mapping flips; re-lay ticks & colors
   });
+  document.getElementById('rot').addEventListener('input',e=>{
+    cfg.rot=parseFloat(e.target.value);
+    document.getElementById('rotV').textContent=cfg.rot+'°';
+    fitView();                         // geometry is unchanged; only the framing moves
+  });
   document.getElementById('speed').addEventListener('input',e=>{
     cfg.speed=parseFloat(e.target.value);
     document.getElementById('speedV').textContent=cfg.speed.toFixed(1)+'×';
@@ -721,6 +768,8 @@
     document.getElementById('tempV').textContent=Math.round(cfg.temp)+'°F';
     document.getElementById('speed').value=cfg.speed;
     document.getElementById('speedV').textContent=(+cfg.speed).toFixed(1)+'×';
+    document.getElementById('rot').value=cfg.rot;
+    document.getElementById('rotV').textContent=cfg.rot+'°';
     ['demo','reveal','ticks','ghost','showBox','tdir'].forEach(k=>document.getElementById(k).checked=!!cfg[k]);
   }
   // named designs live in one map under SAVESKEY; LSKEY stays the auto-restore slot
@@ -746,10 +795,11 @@
   function applyData(data){
     if(!data||!data.geo||!data.cfg) return false;
     Object.keys(geo).forEach(k=>{ if(typeof data.geo[k]==='number') geo[k]=data.geo[k]; });
-    ['temp','tmin','tmax','speed','extMin','extMax','hole','lwid'].forEach(k=>{ if(typeof data.cfg[k]==='number') cfg[k]=data.cfg[k]; });
+    ['temp','tmin','tmax','speed','extMin','extMax','hole','lwid','rot'].forEach(k=>{ if(typeof data.cfg[k]==='number') cfg[k]=data.cfg[k]; });
     cfg.speed=clamp(cfg.speed,0.05,1);
     cfg.extMin=clamp(cfg.extMin,0,17); cfg.extMax=clamp(cfg.extMax,cfg.extMin+1,18);
     cfg.hole=clamp(cfg.hole,0.0625,2); cfg.lwid=clamp(cfg.lwid,0.5,6);
+    cfg.rot=clamp(Math.round(cfg.rot/10)*10,0,360);
     ['demo','reveal','ticks','ghost','showBox','tdir'].forEach(k=>{ if(typeof data.cfg[k]==='boolean') cfg[k]=data.cfg[k]; });
     if(data.preset) document.getElementById('preset').value=data.preset;
     syncUI();
@@ -956,7 +1006,9 @@
       if(Object.keys(PRESETS[k]).every(p=>Math.abs(PRESETS[k][p]-g[p])<1e-9)) return k;
     return 'custom';
   }
-  const UNDOCFG=['tmin','tmax','extMin','extMax'];   // cfg fields that reshape the curve
+  // cfg fields a wholesale change can move: the range/excursion reshape the curve, and
+  // Reset zeroes the rotation — without rot here, undoing a Reset would leave the view turned
+  const UNDOCFG=['tmin','tmax','extMin','extMax','rot'];
   function pushUndo(){
     const snap={geo:Object.assign({},geo)};
     UNDOCFG.forEach(k=>snap[k]=cfg[k]);
@@ -1064,7 +1116,12 @@
   function worldOf(e){
     const r=canvas.getBoundingClientRect();
     const sx=e.clientX-r.left, sy=e.clientY-r.top;
-    return {x:(sx-view.ox-pan.x)/view.s, y:(sy-view.oy-pan.y)/view.s, sx, sy};
+    // exact inverse of TX: undo pan+scale, then undo the rotation about the same centre
+    const wx=(sx-view.ox-pan.x)/view.s, wy=(sy-view.oy-pan.y)/view.s;
+    if(!cfg.rot) return {x:wx, y:wy, sx, sy};
+    const c=Math.cos(-rotRad()), s=Math.sin(-rotRad());
+    const dx=wx-view.cx, dy=wy-view.cy;
+    return {x:view.cx+dx*c-dy*s, y:view.cy+dx*s+dy*c, sx, sy};
   }
   function pickPivot(sx,sy){
     if(!cfg.reveal) return null;
@@ -1221,7 +1278,9 @@
   document.getElementById('reset').addEventListener('click',()=>{
     const v=document.getElementById('preset').value;
     const src=PRESETS[v]||PRESETS.serpentine;
-    pushUndo(); Object.assign(geo,src); syncSliders(); rebuildPath();
+    pushUndo(); Object.assign(geo,src);
+    cfg.rot=0;                         // Reset squares the view back up as well
+    syncUI(); rebuildPath();           // syncUI, not syncSliders: the rot slider moved too
   });
   const panel=document.getElementById('panel');
   document.getElementById('hide').addEventListener('click',()=>panel.classList.add('collapsed'));
