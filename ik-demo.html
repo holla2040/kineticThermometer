@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>2D Inverse Kinematics — FABRIK</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #171a21;
+    --panel-border: #262b36;
+    --text: #e7ebf0;
+    --muted: #8b95a5;
+    --accent: #4fd1c5;
+    --accent-2: #63b3ed;
+    --target: #f6ad55;
+    --bone: #4fd1c5;
+    --joint: #e7ebf0;
+    --grid: #1c2028;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    overflow: hidden; touch-action: none;
+  }
+  #wrap { position: fixed; inset: 0; display: flex; flex-direction: column; }
+  canvas { display: block; flex: 1 1 auto; width: 100%; height: 100%; cursor: grab; }
+  canvas.grabbing { cursor: grabbing; }
+
+  #panel {
+    position: absolute; top: 12px; left: 12px;
+    background: rgba(23,26,33,0.92); backdrop-filter: blur(8px);
+    border: 1px solid var(--panel-border); border-radius: 14px;
+    padding: 14px 16px; width: 250px; max-width: calc(100vw - 24px);
+    box-shadow: 0 8px 30px rgba(0,0,0,0.4);
+    transition: transform .25s ease, opacity .25s ease;
+  }
+  #panel.collapsed { transform: translateX(calc(-100% - 16px)); opacity: 0; pointer-events: none; }
+  #panel h1 { font-size: 14px; margin: 0 0 2px; letter-spacing: .3px; }
+  #panel .sub { font-size: 11px; color: var(--muted); margin: 0 0 12px; }
+  .row { margin: 11px 0; }
+  .row label { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+  .row label b { color: var(--text); font-variant-numeric: tabular-nums; font-weight: 600; }
+  input[type=range] { width: 100%; height: 4px; -webkit-appearance: none; appearance: none;
+    background: var(--panel-border); border-radius: 4px; outline: none; }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px;
+    border-radius: 50%; background: var(--accent); cursor: pointer; border: 2px solid var(--bg); }
+  input[type=range]::-moz-range-thumb { width: 16px; height: 16px; border-radius: 50%;
+    background: var(--accent); cursor: pointer; border: 2px solid var(--bg); }
+  .checks { display: flex; flex-wrap: wrap; gap: 8px 14px; margin-top: 4px; }
+  .chk { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); cursor: pointer; user-select: none; }
+  .chk input { accent-color: var(--accent); width: 15px; height: 15px; }
+  .btns { display: flex; gap: 8px; margin-top: 12px; }
+  button { flex: 1; background: var(--panel-border); color: var(--text); border: none;
+    border-radius: 9px; padding: 9px; font-size: 12px; cursor: pointer; font-weight: 600; }
+  button:hover { background: #313846; }
+  button.primary { background: var(--accent); color: #06201d; }
+  button.primary:hover { background: #63e0d4; }
+
+  #toggle {
+    position: absolute; top: 12px; left: 12px; z-index: 5;
+    width: 40px; height: 40px; border-radius: 11px;
+    background: rgba(23,26,33,0.92); border: 1px solid var(--panel-border);
+    display: none; align-items: center; justify-content: center; cursor: pointer;
+    font-size: 18px; color: var(--text);
+  }
+  #panel.collapsed ~ #toggle { display: flex; }
+  #panel:not(.collapsed) .hideBtn { display: block; }
+
+  #hint { position: absolute; bottom: 14px; left: 0; right: 0; text-align: center;
+    font-size: 12px; color: var(--muted); pointer-events: none; }
+  .credit { font-size: 10px; color: #566; margin-top: 10px; text-align: center; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="c"></canvas>
+</div>
+
+<div id="panel">
+  <h1>Inverse Kinematics</h1>
+  <p class="sub">FABRIK solver — drag the orange target</p>
+
+  <div class="row">
+    <label>Joints <b id="jointsV">7</b></label>
+    <input type="range" id="joints" min="2" max="24" value="7">
+  </div>
+  <div class="row">
+    <label>Bone length <b id="lenV">46</b></label>
+    <input type="range" id="len" min="14" max="90" value="46">
+  </div>
+  <div class="row">
+    <label>Iterations <b id="iterV">10</b></label>
+    <input type="range" id="iter" min="1" max="30" value="10">
+  </div>
+  <div class="row">
+    <label>Angle limit <b id="angV">off</b></label>
+    <input type="range" id="ang" min="0" max="180" value="0">
+  </div>
+
+  <div class="checks">
+    <label class="chk"><input type="checkbox" id="pin" checked> Pin base</label>
+    <label class="chk"><input type="checkbox" id="follow"> Auto-orbit</label>
+    <label class="chk"><input type="checkbox" id="showJoints" checked> Joints</label>
+    <label class="chk"><input type="checkbox" id="showReach" checked> Reach ring</label>
+  </div>
+
+  <div class="btns">
+    <button class="primary" id="reset">Reset</button>
+    <button class="hideBtn" id="hide">Hide</button>
+  </div>
+  <div class="credit">FABRIK · Forward And Backward Reaching IK</div>
+</div>
+<div id="toggle">☰</div>
+<div id="hint">Drag the target — tap ☰ for controls</div>
+
+<script>
+(function () {
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d');
+  let W = 0, H = 0, DPR = Math.min(window.devicePixelRatio || 1, 2);
+
+  // ---- config ----
+  const cfg = {
+    joints: 7, len: 46, iter: 10, angleLimit: 0,
+    pin: true, follow: false, showJoints: true, showReach: true
+  };
+
+  // ---- state ----
+  let points = [];          // chain points, [0] = base
+  let base = { x: 0, y: 0 };
+  let target = { x: 0, y: 0 };
+  let dragging = false;
+  let orbitT = 0;
+
+  function rebuild() {
+    base = { x: W * 0.5, y: H * 0.62 };
+    points = [];
+    for (let i = 0; i < cfg.joints + 1; i++) {
+      points.push({ x: base.x, y: base.y - i * cfg.len });
+    }
+    if (!dragging) {
+      target.x = base.x + cfg.len * cfg.joints * 0.55;
+      target.y = base.y - cfg.len * cfg.joints * 0.45;
+    }
+  }
+
+  function totalLength() { return cfg.len * cfg.joints; }
+
+  function dist(a, b) { const dx = a.x - b.x, dy = a.y - b.y; return Math.hypot(dx, dy); }
+
+  // Optional per-joint angle constraint applied during backward pass
+  function applyAngleLimit(prev, cur, next, limitRad) {
+    // direction of incoming bone (prev -> cur)
+    const inAng = Math.atan2(cur.y - prev.y, cur.x - prev.x);
+    // desired direction (cur -> next)
+    let outAng = Math.atan2(next.y - cur.y, next.x - cur.x);
+    let diff = outAng - inAng;
+    while (diff > Math.PI) diff -= 2 * Math.PI;
+    while (diff < -Math.PI) diff += 2 * Math.PI;
+    if (diff > limitRad) outAng = inAng + limitRad;
+    else if (diff < -limitRad) outAng = inAng - limitRad;
+    else return; // within limits
+    const d = dist(cur, next);
+    next.x = cur.x + Math.cos(outAng) * d;
+    next.y = cur.y + Math.sin(outAng) * d;
+  }
+
+  function solve() {
+    const n = points.length;
+    const L = cfg.len;
+    const limitRad = cfg.angleLimit > 0 ? cfg.angleLimit * Math.PI / 180 : 0;
+
+    // If unreachable, stretch straight toward the target
+    if (dist(base, target) > totalLength()) {
+      const ang = Math.atan2(target.y - base.y, target.x - base.x);
+      points[0].x = base.x; points[0].y = base.y;
+      for (let i = 1; i < n; i++) {
+        points[i].x = points[i - 1].x + Math.cos(ang) * L;
+        points[i].y = points[i - 1].y + Math.sin(ang) * L;
+      }
+      return;
+    }
+
+    for (let it = 0; it < cfg.iter; it++) {
+      // ---- backward: end effector -> base ----
+      points[n - 1].x = target.x; points[n - 1].y = target.y;
+      for (let i = n - 2; i >= 0; i--) {
+        const r = dist(points[i + 1], points[i]);
+        const t = L / r;
+        points[i].x = points[i + 1].x + (points[i].x - points[i + 1].x) * t;
+        points[i].y = points[i + 1].y + (points[i].y - points[i + 1].y) * t;
+      }
+      // ---- forward: base -> end effector ----
+      if (cfg.pin) { points[0].x = base.x; points[0].y = base.y; }
+      for (let i = 1; i < n; i++) {
+        const r = dist(points[i - 1], points[i]);
+        const t = L / r;
+        points[i].x = points[i - 1].x + (points[i].x - points[i - 1].x) * t;
+        points[i].y = points[i - 1].y + (points[i].y - points[i - 1].y) * t;
+        if (limitRad > 0 && i >= 2) {
+          applyAngleLimit(points[i - 2], points[i - 1], points[i], limitRad);
+        }
+      }
+    }
+  }
+
+  // ---- rendering ----
+  function draw() {
+    ctx.clearRect(0, 0, W, H);
+
+    // grid
+    ctx.strokeStyle = getVar('--grid');
+    ctx.lineWidth = 1;
+    const step = 44;
+    ctx.beginPath();
+    for (let x = (W % step) / 2; x < W; x += step) { ctx.moveTo(x, 0); ctx.lineTo(x, H); }
+    for (let y = (H % step) / 2; y < H; y += step) { ctx.moveTo(0, y); ctx.lineTo(W, y); }
+    ctx.stroke();
+
+    // reach ring
+    if (cfg.showReach) {
+      ctx.beginPath();
+      ctx.arc(base.x, base.y, totalLength(), 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(99,179,237,0.22)';
+      ctx.setLineDash([4, 6]);
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // bones
+    const n = points.length;
+    for (let i = 0; i < n - 1; i++) {
+      const a = points[i], b = points[i + 1];
+      const w = 10 - (i / n) * 6;
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y);
+      ctx.lineCap = 'round';
+      ctx.lineWidth = Math.max(3, w);
+      const grad = ctx.createLinearGradient(a.x, a.y, b.x, b.y);
+      grad.addColorStop(0, '#4fd1c5'); grad.addColorStop(1, '#63b3ed');
+      ctx.strokeStyle = grad;
+      ctx.stroke();
+    }
+
+    // joints
+    if (cfg.showJoints) {
+      for (let i = 0; i < n; i++) {
+        const p = points[i];
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, i === 0 ? 7 : 4, 0, Math.PI * 2);
+        ctx.fillStyle = i === 0 ? '#63b3ed' : '#e7ebf0';
+        ctx.fill();
+      }
+    }
+
+    // base anchor ring
+    ctx.beginPath();
+    ctx.arc(base.x, base.y, 11, 0, Math.PI * 2);
+    ctx.strokeStyle = '#63b3ed'; ctx.lineWidth = 2; ctx.stroke();
+
+    // end effector
+    const e = points[n - 1];
+    ctx.beginPath();
+    ctx.arc(e.x, e.y, 6, 0, Math.PI * 2);
+    ctx.fillStyle = '#4fd1c5'; ctx.fill();
+
+    // target
+    ctx.beginPath();
+    ctx.arc(target.x, target.y, 12, 0, Math.PI * 2);
+    ctx.strokeStyle = '#f6ad55'; ctx.lineWidth = 2.5; ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(target.x, target.y, 3, 0, Math.PI * 2);
+    ctx.fillStyle = '#f6ad55'; ctx.fill();
+  }
+
+  function getVar(name) {
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  }
+
+  // ---- loop ----
+  function frame() {
+    if (cfg.follow && !dragging) {
+      orbitT += 0.012;
+      const R = totalLength() * (0.75 + 0.2 * Math.sin(orbitT * 0.7));
+      target.x = base.x + Math.cos(orbitT) * R;
+      target.y = base.y + Math.sin(orbitT * 1.3) * R * 0.6 - R * 0.15;
+    }
+    solve();
+    draw();
+    requestAnimationFrame(frame);
+  }
+
+  // ---- input ----
+  function pos(evt) {
+    const rect = canvas.getBoundingClientRect();
+    const src = evt.touches ? evt.touches[0] : evt;
+    return { x: src.clientX - rect.left, y: src.clientY - rect.top };
+  }
+  function down(evt) {
+    const p = pos(evt);
+    // grab if near target OR anywhere (target snaps to pointer)
+    dragging = true;
+    document.getElementById('follow').checked = false; cfg.follow = false;
+    target.x = p.x; target.y = p.y;
+    canvas.classList.add('grabbing');
+    evt.preventDefault();
+  }
+  function move(evt) {
+    if (!dragging) return;
+    const p = pos(evt);
+    target.x = p.x; target.y = p.y;
+    evt.preventDefault();
+  }
+  function up() { dragging = false; canvas.classList.remove('grabbing'); }
+
+  canvas.addEventListener('mousedown', down);
+  window.addEventListener('mousemove', move);
+  window.addEventListener('mouseup', up);
+  canvas.addEventListener('touchstart', down, { passive: false });
+  window.addEventListener('touchmove', move, { passive: false });
+  window.addEventListener('touchend', up);
+
+  // ---- controls ----
+  function bindRange(id, key, fmt, onChange) {
+    const el = document.getElementById(id);
+    const out = document.getElementById(id + 'V');
+    const upd = () => {
+      cfg[key] = parseInt(el.value, 10);
+      if (out) out.textContent = fmt ? fmt(cfg[key]) : cfg[key];
+      if (onChange) onChange();
+    };
+    el.addEventListener('input', upd); upd();
+  }
+  bindRange('joints', 'joints', null, rebuild);
+  bindRange('len', 'len', null, rebuild);
+  bindRange('iter', 'iter', null);
+  bindRange('ang', 'angleLimit', v => v === 0 ? 'off' : v + '°');
+
+  function bindCheck(id, key) {
+    const el = document.getElementById(id);
+    el.addEventListener('change', () => cfg[key] = el.checked);
+  }
+  bindCheck('pin', 'pin');
+  bindCheck('follow', 'follow');
+  bindCheck('showJoints', 'showJoints');
+  bindCheck('showReach', 'showReach');
+
+  document.getElementById('reset').addEventListener('click', () => { dragging = false; rebuild(); });
+  const panel = document.getElementById('panel');
+  document.getElementById('hide').addEventListener('click', () => panel.classList.add('collapsed'));
+  document.getElementById('toggle').addEventListener('click', () => panel.classList.remove('collapsed'));
+
+  // ---- resize ----
+  function resize() {
+    W = window.innerWidth; H = window.innerHeight;
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = W * DPR; canvas.height = H * DPR;
+    canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    rebuild();
+  }
+  window.addEventListener('resize', resize);
+  resize();
+  frame();
+})();
+</script>
+</body>
+</html>

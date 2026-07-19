@@ -1,0 +1,888 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Coupler-Curve Thermometer — Multi Four-Bar Simulator</title>
+<style>
+  :root{
+    --bg:#10141b; --panel:#161b24; --border:#28303d; --text:#e8edf3; --muted:#8a94a6;
+    --accent:#f6a833; --accent2:#4fd1c5; --brass:#d9a441; --steel:#9fb0c3;
+    --warn:#f2c14e; --bad:#ef5350;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    overflow:hidden;touch-action:none;}
+  canvas{position:fixed;inset:0;width:100%;height:100%;display:block;}
+
+  #panel{position:absolute;top:12px;left:12px;width:272px;max-width:calc(100vw - 24px);
+    background:rgba(22,27,36,.94);backdrop-filter:blur(9px);border:1px solid var(--border);
+    border-radius:15px;padding:14px 16px;box-shadow:0 10px 34px rgba(0,0,0,.45);
+    max-height:calc(100vh - 24px);overflow-y:auto;transition:transform .25s,opacity .25s;}
+  #panel.collapsed{transform:translateX(calc(-100% - 18px));opacity:0;pointer-events:none;}
+  h1{font-size:14px;margin:0 0 2px;letter-spacing:.3px;}
+  .sub{font-size:11px;color:var(--muted);margin:0 0 10px;line-height:1.4;}
+  .sec{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);
+    margin:14px 0 8px;border-top:1px solid var(--border);padding-top:11px;}
+  details.fold{border-top:1px solid var(--border);margin:14px 0 8px;padding-top:11px;}
+  details.fold summary{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);
+    cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center;user-select:none;}
+  details.fold summary:hover{color:var(--text);}
+  details.fold summary::-webkit-details-marker{display:none;}
+  details.fold summary::after{content:'▸';font-size:11px;transition:transform .15s;}
+  details.fold[open] summary::after{transform:rotate(90deg);}
+  .row{margin:9px 0;}
+  .row label{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:5px;}
+  .row label b{color:var(--text);font-variant-numeric:tabular-nums;font-weight:600;}
+  input[type=range]{width:100%;height:4px;-webkit-appearance:none;appearance:none;
+    background:var(--border);border-radius:4px;outline:none;}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:17px;height:17px;
+    border-radius:50%;background:var(--accent);cursor:pointer;border:2px solid var(--bg);}
+  input[type=range]::-moz-range-thumb{width:17px;height:17px;border-radius:50%;
+    background:var(--accent);cursor:pointer;border:2px solid var(--bg);}
+  input[type=range].temp::-webkit-slider-thumb{background:var(--accent2);}
+  input[type=range].temp::-moz-range-thumb{background:var(--accent2);}
+  select{width:100%;background:#10151d;color:var(--text);border:1px solid var(--border);
+    border-radius:9px;padding:8px;font-size:12px;font-weight:600;}
+  input[type=number]{width:100%;background:#10151d;color:var(--text);border:1px solid var(--border);
+    border-radius:9px;padding:7px 9px;font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;}
+  input[type=number]:focus{outline:none;border-color:var(--accent2);}
+  .pair{display:flex;gap:8px;}
+  .pair>div{flex:1;}
+  .pair label{display:block;font-size:11px;color:var(--muted);margin-bottom:5px;}
+  .checks{display:flex;flex-wrap:wrap;gap:8px 13px;margin-top:6px;}
+  .chk{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);cursor:pointer;user-select:none;}
+  .chk input{accent-color:var(--accent);width:15px;height:15px;}
+  .btns{display:flex;gap:8px;margin-top:12px;}
+  button{flex:1;background:var(--border);color:var(--text);border:none;border-radius:9px;
+    padding:9px;font-size:12px;cursor:pointer;font-weight:600;}
+  button:hover{background:#333c4b;}
+  button.primary{background:var(--accent);color:#2a1a00;}
+  .readout{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px;}
+  .stat{background:#10151d;border:1px solid var(--border);border-radius:10px;padding:7px 10px;}
+  .stat .k{font-size:9px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);}
+  .stat .v{font-size:14px;font-weight:700;font-variant-numeric:tabular-nums;margin-top:2px;}
+  #tmsg,#smsg{font-size:11px;margin-top:8px;padding:7px 9px;border-radius:8px;line-height:1.35;display:none;}
+  #tmsg.bad,#smsg.bad{display:block;background:rgba(239,83,80,.12);color:var(--bad);border:1px solid rgba(239,83,80,.35);}
+  #tmsg.ok,#smsg.ok{display:block;background:rgba(79,209,197,.1);color:var(--accent2);border:1px solid rgba(79,209,197,.28);}
+  #smsg.warn{display:block;background:rgba(242,193,78,.12);color:var(--warn);border:1px solid rgba(242,193,78,.3);}
+
+  #tip{position:fixed;pointer-events:none;z-index:8;display:none;max-width:230px;
+    background:rgba(22,27,36,.97);border:1px solid rgba(246,168,51,.55);border-radius:10px;
+    padding:8px 11px;box-shadow:0 6px 22px rgba(0,0,0,.5);}
+  #tip .n{font-size:12px;font-weight:700;color:var(--text);}
+  #tip .s{font-size:11px;color:var(--muted);margin-top:3px;line-height:1.4;}
+  .row.hl{background:rgba(246,168,51,.1);box-shadow:0 0 0 5px rgba(246,168,51,.1);border-radius:6px;}
+  #toggle{position:absolute;top:12px;left:12px;z-index:5;width:42px;height:42px;border-radius:12px;
+    background:rgba(22,27,36,.93);border:1px solid var(--border);display:none;align-items:center;
+    justify-content:center;cursor:pointer;font-size:19px;color:var(--text);}
+  #panel.collapsed ~ #toggle{display:flex;}
+  #hint{position:absolute;bottom:12px;left:0;right:0;text-align:center;font-size:12px;color:var(--muted);pointer-events:none;padding:0 12px;}
+  .credit{font-size:10px;color:#5a6472;margin-top:12px;text-align:center;line-height:1.5;}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="panel">
+  <h1>Coupler-Curve Thermometer</h1>
+  <p class="sub">Linear actuator (24″ retracted / 42″ extended, 18″ stroke) → bell crank → four-bar → second four-bar. The indicator IS a coupler point — the scale is the spline it traces.</p>
+
+  <div class="readout">
+    <div class="stat"><div class="k">Temperature</div><div class="v" id="oT">—</div></div>
+    <div class="stat"><div class="k">Actuator ext.</div><div class="v" id="oE">—</div></div>
+    <div class="stat"><div class="k">Scale length</div><div class="v" id="oL">—</div></div>
+    <div class="stat"><div class="k">Speed ratio</div><div class="v" id="oR">—</div></div>
+  </div>
+  <div id="tmsg"></div>
+
+  <div class="sec">Preset</div>
+  <select id="preset">
+    <option value="serpentine">Serpentine — S-curve with end hook</option>
+    <option value="grandarc">Grand Arc — 5½ ft sweeping curve</option>
+    <option value="custom">Custom (your slider edits)</option>
+  </select>
+
+  <div class="sec">Temperature</div>
+  <div class="row">
+    <label>Reading <b id="tempV">70°F</b></label>
+    <input type="range" class="temp" id="temp" min="-20" max="110" value="70" step="0.5">
+  </div>
+  <div class="row pair">
+    <div><label>Scale min °F</label><input type="number" id="tmin" value="-20" step="5" min="-80" max="200"></div>
+    <div><label>Scale max °F</label><input type="number" id="tmax" value="110" step="5" min="-80" max="200"></div>
+  </div>
+  <div class="checks">
+    <label class="chk"><input type="checkbox" id="demo" checked> Auto-cycle</label>
+    <label class="chk"><input type="checkbox" id="reveal" checked> Show mechanism</label>
+    <label class="chk"><input type="checkbox" id="tdir"> Reverse scale (retract = hot)</label>
+  </div>
+  <div class="row" style="margin-top:10px;">
+    <label>Animation speed <b id="speedV">1.0×</b></label>
+    <input type="range" id="speed" min="0.05" max="1" value="1" step="0.05">
+  </div>
+
+  <div class="sec">Display</div>
+  <div class="checks">
+    <label class="chk"><input type="checkbox" id="ticks" checked> Scale ticks</label>
+    <label class="chk"><input type="checkbox" id="ghost"> Inner curves</label>
+  </div>
+
+  <details class="fold">
+    <summary>Stage 1 four-bar (inches)</summary>
+    <div class="row"><label>Crank arm L2 <b id="L2V"></b></label><input type="range" id="L2" min="3" max="18" step="0.1"></div>
+    <div class="row"><label>Coupler L3 <b id="L3V"></b></label><input type="range" id="L3" min="5" max="28" step="0.1"></div>
+    <div class="row"><label>Rocker L4 <b id="L4V"></b></label><input type="range" id="L4" min="4" max="24" step="0.1"></div>
+    <div class="row"><label>Ground O4 x <b id="gxV"></b></label><input type="range" id="gx" min="-24" max="30" step="0.1"></div>
+    <div class="row"><label>Ground O4 y <b id="gyV"></b></label><input type="range" id="gy" min="-24" max="24" step="0.1"></div>
+    <div class="row"><label>Coupler pt u <b id="cuV"></b></label><input type="range" id="cu" min="0" max="22" step="0.1"></div>
+    <div class="row"><label>Coupler pt v <b id="cvV"></b></label><input type="range" id="cv" min="-14" max="14" step="0.1"></div>
+  </details>
+
+  <details class="fold">
+    <summary>Stage 2 four-bar</summary>
+    <div class="row"><label>Link L5 <b id="L5V"></b></label><input type="range" id="L5" min="4" max="28" step="0.1"></div>
+    <div class="row"><label>Rocker L6 <b id="L6V"></b></label><input type="range" id="L6" min="4" max="22" step="0.1"></div>
+    <div class="row"><label>Ground O6 x <b id="oxV"></b></label><input type="range" id="ox" min="-28" max="34" step="0.1"></div>
+    <div class="row"><label>Ground O6 y <b id="oyV"></b></label><input type="range" id="oy" min="-28" max="26" step="0.1"></div>
+    <div class="row"><label>Indicator u <b id="cu2V"></b></label><input type="range" id="cu2" min="0" max="24" step="0.1"></div>
+    <div class="row"><label>Indicator v <b id="cv2V"></b></label><input type="range" id="cv2" min="-16" max="16" step="0.1"></div>
+  </details>
+
+  <details class="fold">
+    <summary>Actuator drive (24″–42″)</summary>
+    <div class="row pair">
+      <div><label>Excursion min ″</label><input type="number" id="extMin" value="0" step="0.5" min="0" max="18"></div>
+      <div><label>Excursion max ″</label><input type="number" id="extMax" value="18" step="0.5" min="0" max="18"></div>
+    </div>
+    <div class="row"><label>Crank radius rA <b id="rAV"></b></label><input type="range" id="rA" min="8" max="24" step="0.1"></div>
+    <div class="row"><label>Anchor dist. dA <b id="dAV"></b></label><input type="range" id="dA" min="16" max="40" step="0.1"></div>
+    <div class="row"><label>Anchor angle <b id="anchV"></b></label><input type="range" id="anch" min="-180" max="180" step="1"></div>
+    <div class="checks">
+      <label class="chk"><input type="checkbox" id="s1c"> Flip stage 1</label>
+      <label class="chk"><input type="checkbox" id="s2c"> Flip stage 2</label>
+    </div>
+  </details>
+
+  <div class="sec">Saved settings</div>
+  <div class="btns" style="margin-top:6px;">
+    <button class="primary" id="save">Save</button>
+    <button id="clear">Clear saved</button>
+  </div>
+  <div id="smsg"></div>
+
+  <div class="btns">
+    <button class="primary" id="reset">Reset preset</button>
+    <button id="hide">Hide</button>
+  </div>
+  <div class="credit">Ticks are equal steps of temperature —<br>their spacing on the spline is the mechanism talking.</div>
+</div>
+<div id="toggle">☰</div>
+<div id="tip"><div class="n"></div><div class="s"></div></div>
+<div id="hint">Drag mounts &amp; joint pins to reshape the linkage · <b>Space</b> plays/pauses · uncheck <b>Show mechanism</b> for the public view</div>
+
+<script>
+(function(){
+  const canvas=document.getElementById('c'), ctx=canvas.getContext('2d');
+  let W=0,H=0,DPR=Math.min(window.devicePixelRatio||1,2);
+  const DEG=Math.PI/180;
+  const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+
+  // ---------- presets (found by numeric search; valid over full stroke) ----------
+  // presets re-searched for the REAL actuator envelope: 24″ retracted, 42″ extended
+  // fabrication-friendly presets: all fixed mounts cluster on one side of the scale,
+  // and the spline never passes between any two mounting points
+  const PRESETS={
+    serpentine:{rA:12.8, dA:33.1, anch:-127.2, gx:12.9, gy:-6.0, L2:11.4, L3:11.2, L4:9.6,
+                cu:3.5, cv:11.3, s1:-1, ox:8.1, oy:-12.0, L5:5.9, L6:14.0, cu2:14.6, cv2:3.6, s2:-1},
+    grandarc:  {rA:20.8, dA:31.7, anch:166.7, gx:-3.8, gy:-0.1, L2:11.9, L3:11.8, L4:12.6,
+                cu:19.6, cv:-5.2, s1:-1, ox:7.7, oy:-7.6, L5:8.5, L6:13.5, cu2:19.3, cv2:-12.0, s2:-1}
+  };
+
+  const geo=Object.assign({}, PRESETS.serpentine);
+  const cfg={temp:70, tmin:-20, tmax:110, demo:true, reveal:true, ticks:true, ghost:false, speed:1, tdir:false,
+             extMin:0, extMax:18};     // used slice of the actuator stroke, in inches of extension
+  // actuator stroke envelope (pin-to-pin): 24″ retracted + 18″ stroke = 42″ extended
+  const ACT={lmin:24, stroke:18};
+  let demoT=0.35;
+
+  // ---------- kinematics ----------
+  function circInt(p0,r0,p1,r1,sign){
+    const dx=p1.x-p0.x, dy=p1.y-p0.y, d=Math.hypot(dx,dy);
+    if(d<1e-9 || d>r0+r1 || d<Math.abs(r0-r1)) return null;
+    const a=(r0*r0-r1*r1+d*d)/(2*d);
+    const h2=r0*r0-a*a; if(h2<0) return null;
+    const h=Math.sqrt(h2);
+    const mx=p0.x+a*dx/d, my=p0.y+a*dy/d;
+    return {x:mx+sign*h*(-dy/d), y:my+sign*h*(dx/d)};
+  }
+  function phi(l){
+    const rA=geo.rA, dA=geo.dA;
+    return Math.acos(clamp((dA*dA+rA*rA-l*l)/(2*dA*rA),-1,1));
+  }
+  function actFits(l){
+    // drive triangle must close with margin at this length
+    return l>=Math.abs(geo.dA-geo.rA)+0.5 && l<=geo.dA+geo.rA-0.5;
+  }
+  function lenAt(t){
+    let f=clamp((t-cfg.tmin)/(cfg.tmax-cfg.tmin),0,1);
+    if(cfg.tdir) f=1-f;               // reversed: retracted = hot
+    return ACT.lmin + cfg.extMin + f*(cfg.extMax-cfg.extMin);
+  }
+  // full pose for a temperature; null pieces if unassemblable
+  function pose(t){
+    const l=lenAt(t);
+    const th=geo.anch*DEG + phi(l);
+    const O2={x:0,y:0}, O4={x:geo.gx,y:geo.gy}, O6={x:geo.ox,y:geo.oy};
+    const anchor={x:geo.dA*Math.cos(geo.anch*DEG), y:geo.dA*Math.sin(geo.anch*DEG)};
+    const R={x:geo.rA*Math.cos(th), y:geo.rA*Math.sin(th)};      // actuator attach
+    const B={x:geo.L2*Math.cos(th), y:geo.L2*Math.sin(th)};      // coupler attach (same bell crank)
+    if(!actFits(l)) return {O2,O4,O6,anchor,R,B,valid:false,why:'act'};
+    const C=circInt(B,geo.L3,O4,geo.L4,geo.s1);
+    if(!C) return {O2,O4,O6,anchor,R,B,valid:false,why:'chain'};
+    const ux=(C.x-B.x)/geo.L3, uy=(C.y-B.y)/geo.L3;
+    const P={x:B.x+geo.cu*ux-geo.cv*uy, y:B.y+geo.cu*uy+geo.cv*ux};
+    const D=circInt(P,geo.L5,O6,geo.L6,geo.s2);
+    if(!D) return {O2,O4,O6,anchor,R,B,C,P,valid:false,why:'chain'};
+    const dl=Math.hypot(D.x-P.x,D.y-P.y);
+    const vx=(D.x-P.x)/dl, vy=(D.y-P.y)/dl;
+    const Q={x:P.x+geo.cu2*vx-geo.cv2*vy, y:P.y+geo.cu2*vy+geo.cv2*vx};
+    return {O2,O4,O6,anchor,R,B,C,P,D,Q,valid:true};
+  }
+
+  // ---------- path cache ----------
+  const NSAMP=140;
+  let pathQ=[], pathJ={B:[],C:[],P:[],D:[]}, pathValid=true, pathWhy=null, pathLen=0, speedRatio=1, view={s:1,ox:0,oy:0};
+  function rebuildPath(){
+    pathQ=[]; pathJ={B:[],C:[],P:[],D:[]}; pathValid=true; pathWhy=null;
+    for(let i=0;i<=NSAMP;i++){
+      const t=cfg.tmin+(cfg.tmax-cfg.tmin)*i/NSAMP;
+      const p=pose(t);
+      pathQ.push(p.valid?p.Q:null);
+      pathJ.B.push(p.B||null); pathJ.C.push(p.C||null);
+      pathJ.P.push(p.P||null); pathJ.D.push(p.D||null);
+      if(!p.valid){ pathValid=false; pathWhy=pathWhy||p.why||'chain'; }
+    }
+    // metrics on valid runs
+    let len=0,mx=0,mn=1e9;
+    for(let i=1;i<=NSAMP;i++){
+      if(pathQ[i]&&pathQ[i-1]){
+        const s=Math.hypot(pathQ[i].x-pathQ[i-1].x, pathQ[i].y-pathQ[i-1].y);
+        len+=s; mx=Math.max(mx,s); mn=Math.min(mn,s);
+      }
+    }
+    pathLen=len; speedRatio=(mn>1e-9)?mx/mn:0;
+    fitView();
+  }
+  function fitView(){
+    if(dragPivot) return;              // keep the view still while dragging a mount
+    let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
+    const add=p=>{if(!p)return; x0=Math.min(x0,p.x);y0=Math.min(y0,p.y);x1=Math.max(x1,p.x);y1=Math.max(y1,p.y);};
+    pathQ.forEach(add);
+    const p0=pose(cfg.tmin), p1=pose(cfg.tmax);
+    [p0,p1].forEach(p=>{['O2','O4','O6','anchor','B','C','P','D'].forEach(k=>add(p[k]));});
+    if(x0>x1){x0=-10;x1=10;y0=-10;y1=10;}
+    const mw=x1-x0+9, mh=y1-y0+9;
+    const leftEdge=(W>640)?318:24;              // keep clear of the control panel
+    const px=W-leftEdge-40, py=H-50;
+    view.s=Math.min(px/mw, py/mh);
+    view.ox=leftEdge+(W-leftEdge-(x0+x1)*view.s)/2;
+    view.oy=(H-(y0+y1)*view.s)/2;
+  }
+  const TX=p=>({x:p.x*view.s+view.ox, y:p.y*view.s+view.oy});
+
+  // ---------- colors ----------
+  function tempColor(t){
+    const f=clamp((t-cfg.tmin)/(cfg.tmax-cfg.tmin),0,1);
+    const stops=[[90,169,230],[246,168,51],[239,106,76]];
+    const seg=f<0.5?0:1, lf=f<0.5?f/0.5:(f-0.5)/0.5;
+    const a=stops[seg],b=stops[seg+1];
+    return `rgb(${a.map((v,i)=>Math.round(v+(b[i]-v)*lf)).join(',')})`;
+  }
+
+  // ---------- drawing ----------
+  function draw(){
+    ctx.clearRect(0,0,W,H);
+    const p=pose(cfg.temp);
+
+    drawScale();
+    if(cfg.ghost) drawGhost();
+    if(cfg.reveal) drawMechanism(p);
+    // highlight dragged mount or hovered component
+    if(cfg.reveal && dragPivot){
+      const q=pivotPos(dragPivot,p);
+      if(q){
+        const s=TX(q);
+        ctx.beginPath(); ctx.arc(s.x,s.y,15,0,Math.PI*2);
+        ctx.strokeStyle='rgba(246,168,51,.8)'; ctx.lineWidth=2.5; ctx.stroke();
+      }
+    } else if(cfg.reveal && hoverCompId){
+      const c=buildComps(p).find(x=>x.id===hoverCompId);
+      if(c){
+        ctx.save();
+        if(c.type==='seg'){
+          ctx.beginPath(); ctx.moveTo(c.a.x,c.a.y); ctx.lineTo(c.b.x,c.b.y);
+          ctx.strokeStyle='rgba(255,255,255,.32)'; ctx.lineWidth=16; ctx.lineCap='round'; ctx.stroke();
+        } else if(c.type==='tri'){
+          ctx.beginPath();
+          c.pts.forEach((q,i)=>i?ctx.lineTo(q.x,q.y):ctx.moveTo(q.x,q.y));
+          ctx.closePath();
+          ctx.fillStyle='rgba(255,255,255,.14)'; ctx.fill();
+          ctx.strokeStyle='rgba(255,255,255,.45)'; ctx.lineWidth=2; ctx.stroke();
+        } else {
+          ctx.beginPath(); ctx.arc(c.s.x,c.s.y,c.r+3,0,Math.PI*2);
+          ctx.strokeStyle='rgba(246,168,51,.85)'; ctx.lineWidth=2.5; ctx.stroke();
+        }
+        ctx.restore();
+      }
+    }
+    drawIndicator(p);
+    updateReadout(p);
+  }
+
+  function drawScale(){
+    // the engraved spline: gradient stroke drawn in short segments
+    ctx.lineCap='round';
+    for(let i=1;i<=NSAMP;i++){
+      if(!pathQ[i]||!pathQ[i-1]) continue;
+      const a=TX(pathQ[i-1]), b=TX(pathQ[i]);
+      const t=cfg.tmin+(cfg.tmax-cfg.tmin)*(i-0.5)/NSAMP;
+      // groove shadow
+      ctx.beginPath(); ctx.moveTo(a.x,a.y+2); ctx.lineTo(b.x,b.y+2);
+      ctx.strokeStyle='rgba(0,0,0,.45)'; ctx.lineWidth=9; ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y);
+      ctx.strokeStyle=tempColor(t); ctx.lineWidth=6; ctx.stroke();
+    }
+    if(!cfg.ticks) return;
+    // ticks: equal TEMPERATURE steps — spacing on the curve is the tell
+    const step=10, lstep=10;           // labeled tick every 10°
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    for(let t=Math.ceil(cfg.tmin/step)*step; t<=cfg.tmax; t+=step){
+      const i=Math.round((t-cfg.tmin)/(cfg.tmax-cfg.tmin)*NSAMP);
+      const i0=Math.max(1,Math.min(NSAMP-1,i));
+      if(!pathQ[i0-1]||!pathQ[i0+1]||!pathQ[i0]) continue;
+      const a=TX(pathQ[i0-1]), b=TX(pathQ[i0+1]), q=TX(pathQ[i0]);
+      let tx=b.x-a.x, ty=b.y-a.y; const tl=Math.hypot(tx,ty)||1; tx/=tl; ty/=tl;
+      const nx=-ty, ny=tx;
+      const big=(t%lstep===0);
+      const len=big?12:7;
+      ctx.beginPath();
+      ctx.moveTo(q.x+nx*5, q.y+ny*5);
+      ctx.lineTo(q.x+nx*(5+len), q.y+ny*(5+len));
+      ctx.strokeStyle=big?'#c9d4e2':'#5a6675'; ctx.lineWidth=big?2:1.3; ctx.stroke();
+      if(big){
+        ctx.fillStyle='#c9d4e2'; ctx.font='600 12px -apple-system,sans-serif';
+        ctx.fillText(t+'°', q.x+nx*(5+len+13), q.y+ny*(5+len+13));
+      }
+    }
+  }
+
+  function traceJoint(arr,col){
+    ctx.beginPath(); let started=false;
+    for(let i=0;i<=NSAMP;i++){
+      if(!arr[i]){started=false;continue;}
+      const a=TX(arr[i]);
+      started?ctx.lineTo(a.x,a.y):ctx.moveTo(a.x,a.y); started=true;
+    }
+    ctx.strokeStyle=col; ctx.lineWidth=1.8;
+    ctx.setLineDash([4,4]); ctx.stroke(); ctx.setLineDash([]);
+  }
+  function drawGhost(){
+    // dashed traces of every moving joint over the full temperature range
+    traceJoint(pathJ.B,'rgba(217,164,65,.55)');   // crank pin B (arc)
+    traceJoint(pathJ.C,'rgba(139,148,166,.5)');   // rocker-1 pin C (arc)
+    traceJoint(pathJ.P,'rgba(79,209,197,.65)');   // stage-1 coupler point P
+    traceJoint(pathJ.D,'rgba(139,148,166,.5)');   // rocker-2 pin D (arc)
+  }
+
+  function bar(a,b,w,c1,c2){
+    const A=TX(a),B=TX(b);
+    ctx.beginPath(); ctx.moveTo(A.x,A.y); ctx.lineTo(B.x,B.y);
+    const g=ctx.createLinearGradient(A.x,A.y,B.x,B.y);
+    g.addColorStop(0,c1); g.addColorStop(1,c2||c1);
+    ctx.strokeStyle=g; ctx.lineWidth=w; ctx.lineCap='round'; ctx.stroke();
+  }
+  function plate(pts,fill,stroke){
+    ctx.beginPath();
+    pts.forEach((p,i)=>{const s=TX(p); i?ctx.lineTo(s.x,s.y):ctx.moveTo(s.x,s.y);});
+    ctx.closePath();
+    ctx.fillStyle=fill; ctx.fill();
+    ctx.strokeStyle=stroke; ctx.lineWidth=2; ctx.lineJoin='round'; ctx.stroke();
+  }
+  function joint(p,r,col){
+    const s=TX(p);
+    ctx.beginPath(); ctx.arc(s.x,s.y,r,0,Math.PI*2);
+    ctx.fillStyle=col; ctx.fill();
+  }
+  function ground(p){
+    const s=TX(p);
+    ctx.beginPath(); ctx.arc(s.x,s.y,8,0,Math.PI*2);
+    ctx.fillStyle='#1c242f'; ctx.fill();
+    ctx.strokeStyle='#63b3ed'; ctx.lineWidth=2; ctx.stroke();
+    ctx.strokeStyle='#39424f'; ctx.lineWidth=1.4;
+    for(let i=-2;i<=2;i++){
+      ctx.beginPath(); ctx.moveTo(s.x+i*4.5,s.y+8); ctx.lineTo(s.x+i*4.5-4.5,s.y+14); ctx.stroke();
+    }
+  }
+
+  function drawMechanism(p){
+    if(!p.B) return;
+    // actuator: anchor -> R
+    if(p.anchor&&p.R){
+      const A=TX(p.anchor), R=TX(p.R);
+      const dx=R.x-A.x, dy=R.y-A.y, L=Math.hypot(dx,dy), ux=dx/L, uy=dy/L;
+      const bl=Math.min(L*0.6, ACT.lmin*view.s*0.92);
+      ctx.lineCap='round';
+      ctx.beginPath(); ctx.moveTo(A.x,A.y); ctx.lineTo(A.x+ux*bl,A.y+uy*bl);
+      ctx.strokeStyle='#3a4453'; ctx.lineWidth=13; ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(A.x,A.y); ctx.lineTo(A.x+ux*bl,A.y+uy*bl);
+      ctx.strokeStyle='#556072'; ctx.lineWidth=8; ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(A.x+ux*bl,A.y+uy*bl); ctx.lineTo(R.x,R.y);
+      ctx.strokeStyle='#9fb0c3'; ctx.lineWidth=4; ctx.stroke();
+      ground(p.anchor);
+    }
+    // bell crank O2->outermost of R/B
+    const armEnd = (geo.rA>geo.L2)? p.R : p.B;
+    bar(p.O2, armEnd, 8, '#d9a441','#b9863a');
+    // stage-1 coupler plate B-C-P
+    if(p.C&&p.P) plate([p.B,p.C,p.P],'rgba(79,209,197,.13)','#3aa79b');
+    // rocker O4->C
+    if(p.C) bar(p.O4,p.C,7,'#8a94a6','#6c7686');
+    // stage-2 plate P-D-Q
+    if(p.D&&p.Q) plate([p.P,p.D,p.Q],'rgba(246,168,51,.12)','#c98a2e');
+    // rocker O6->D
+    if(p.D) bar(p.O6,p.D,7,'#8a94a6','#6c7686');
+    // grounds & joints
+    ground(p.O2); ground(p.O4); ground(p.O6);
+    if(p.R) joint(p.R,4.5,'#e8edf3');
+    joint(p.B,4.5,'#e8edf3');
+    if(p.C) joint(p.C,4.5,'#e8edf3');
+    if(p.P) joint(p.P,4.5,'#4fd1c5');
+    if(p.D) joint(p.D,4.5,'#e8edf3');
+  }
+
+  function drawIndicator(p){
+    if(!p.Q) return;
+    const s=TX(p.Q);
+    ctx.save();
+    ctx.shadowColor=tempColor(cfg.temp); ctx.shadowBlur=16;
+    ctx.beginPath(); ctx.arc(s.x,s.y,9,0,Math.PI*2);
+    ctx.fillStyle=tempColor(cfg.temp); ctx.fill();
+    ctx.restore();
+    ctx.beginPath(); ctx.arc(s.x,s.y,9,0,Math.PI*2);
+    ctx.strokeStyle='#e8edf3'; ctx.lineWidth=2; ctx.stroke();
+    ctx.beginPath(); ctx.arc(s.x,s.y,3,0,Math.PI*2);
+    ctx.fillStyle='#10141b'; ctx.fill();
+  }
+
+  function updateReadout(p){
+    document.getElementById('oT').textContent=Math.round(cfg.temp)+'°F';
+    document.getElementById('oT').style.color=tempColor(cfg.temp);
+    document.getElementById('oE').textContent=(lenAt(cfg.temp)-ACT.lmin).toFixed(1)+'″';
+    document.getElementById('oL').textContent=(pathLen).toFixed(0)+'″';
+    document.getElementById('oR').textContent=speedRatio?speedRatio.toFixed(1)+'×':'—';
+    const m=document.getElementById('tmsg');
+    if(!pathValid){
+      m.className='bad';
+      m.textContent = (pathWhy==='act')
+        ? '⚠ Actuator can’t drive the crank through this range — the 24–42″ pin-to-pin triangle won’t close. Need |anchor−crank| < 24″ and anchor+crank > 42″ (with margin). Increase crank radius or anchor distance.'
+        : '⚠ The chain can’t assemble across part of the temperature range — a joint separates or jams. Nudge link lengths or ground pivots until this clears.';
+    } else if(!p.valid){
+      m.className='bad'; m.textContent='⚠ Unassemblable at this reading.';
+    } else {
+      m.className='ok';
+      m.textContent='Assembles across full range ✓  '+pathLen.toFixed(0)+'″ of scale from an 18″ stroke.';
+    }
+  }
+
+  // ---------- loop ----------
+  function frame(){
+    if(cfg.demo){
+      demoT+=0.0045*cfg.speed;
+      const f=0.5-0.5*Math.cos(demoT*Math.PI*2);
+      cfg.temp=cfg.tmin+(cfg.tmax-cfg.tmin)*f;
+      const el=document.getElementById('temp');
+      el.value=cfg.temp;
+      document.getElementById('tempV').textContent=Math.round(cfg.temp)+'°F';
+    }
+    draw();
+    requestAnimationFrame(frame);
+  }
+
+  // ---------- controls ----------
+  const GEOKEYS=['L2','L3','L4','gx','gy','cu','cv','L5','L6','ox','oy','cu2','cv2','rA','dA','anch'];
+  function syncSliders(){
+    GEOKEYS.forEach(k=>{
+      const el=document.getElementById(k); el.value=geo[k];
+      document.getElementById(k+'V').textContent=fmtGeo(k,geo[k]);
+    });
+    document.getElementById('s1c').checked=geo.s1<0;
+    document.getElementById('s2c').checked=geo.s2<0;
+  }
+  function fmtGeo(k,v){ return k==='anch'? Math.round(v)+'°' : (+v).toFixed(1)+'″'; }
+
+  GEOKEYS.forEach(k=>{
+    const el=document.getElementById(k);
+    el.addEventListener('input',()=>{
+      geo[k]=parseFloat(el.value);
+      document.getElementById(k+'V').textContent=fmtGeo(k,geo[k]);
+      document.getElementById('preset').value='custom';
+      rebuildPath();
+    });
+  });
+  ['s1c','s2c'].forEach((id,ix)=>{
+    document.getElementById(id).addEventListener('change',e=>{
+      geo[ix?'s2':'s1']=e.target.checked?-1:1;
+      document.getElementById('preset').value='custom';
+      rebuildPath();
+    });
+  });
+  document.getElementById('temp').addEventListener('input',e=>{
+    cfg.temp=parseFloat(e.target.value);
+    cfg.demo=false; document.getElementById('demo').checked=false;
+    document.getElementById('tempV').textContent=Math.round(cfg.temp)+'°F';
+  });
+  ['demo','reveal','ticks','ghost'].forEach(k=>{
+    const el=document.getElementById(k);
+    el.addEventListener('change',()=>cfg[k]=el.checked);
+  });
+  function applyScaleRange(){
+    const tsl=document.getElementById('temp');
+    tsl.min=cfg.tmin; tsl.max=cfg.tmax;
+    cfg.temp=clamp(cfg.temp,cfg.tmin,cfg.tmax);
+    tsl.value=cfg.temp;
+    document.getElementById('tempV').textContent=Math.round(cfg.temp)+'°F';
+    rebuildPath();                     // ticks, colors, actuator mapping all re-lay
+  }
+  document.getElementById('tmin').addEventListener('change',e=>{
+    let v=parseFloat(e.target.value);
+    if(!isFinite(v)) v=cfg.tmin;
+    v=Math.min(v, cfg.tmax-10);        // keep at least a 10° span
+    cfg.tmin=v; e.target.value=v;
+    applyScaleRange();
+  });
+  document.getElementById('tmax').addEventListener('change',e=>{
+    let v=parseFloat(e.target.value);
+    if(!isFinite(v)) v=cfg.tmax;
+    v=Math.max(v, cfg.tmin+10);
+    cfg.tmax=v; e.target.value=v;
+    applyScaleRange();
+  });
+  document.getElementById('extMin').addEventListener('change',e=>{
+    let v=parseFloat(e.target.value);
+    if(!isFinite(v)) v=cfg.extMin;
+    v=clamp(v,0,Math.min(18,cfg.extMax-1));   // keep at least 1″ of travel
+    cfg.extMin=v; e.target.value=v;
+    rebuildPath();
+  });
+  document.getElementById('extMax').addEventListener('change',e=>{
+    let v=parseFloat(e.target.value);
+    if(!isFinite(v)) v=cfg.extMax;
+    v=clamp(v,Math.max(0,cfg.extMin+1),18);
+    cfg.extMax=v; e.target.value=v;
+    rebuildPath();
+  });
+  document.getElementById('tdir').addEventListener('change',e=>{
+    cfg.tdir=e.target.checked;
+    rebuildPath();                     // temp→position mapping flips; re-lay ticks & colors
+  });
+  document.getElementById('speed').addEventListener('input',e=>{
+    cfg.speed=parseFloat(e.target.value);
+    document.getElementById('speedV').textContent=cfg.speed.toFixed(1)+'×';
+  });
+
+  // ---------- persistence (guarded: silently degrades where storage is blocked) ----------
+  const LSKEY='couplerThermometer.v2';   // v2: real actuator envelope — old saves ignored
+  let memStore=null;
+  function showSaveMsg(cls,txt){
+    const m=document.getElementById('smsg');
+    m.className=cls; m.textContent=txt;
+    clearTimeout(showSaveMsg._t);
+    showSaveMsg._t=setTimeout(()=>{m.className='';},4000);
+  }
+  function syncUI(){
+    syncSliders();
+    document.getElementById('tmin').value=cfg.tmin;
+    document.getElementById('tmax').value=cfg.tmax;
+    document.getElementById('extMin').value=cfg.extMin;
+    document.getElementById('extMax').value=cfg.extMax;
+    const tsl=document.getElementById('temp');
+    tsl.min=cfg.tmin; tsl.max=cfg.tmax;
+    document.getElementById('temp').value=cfg.temp;
+    document.getElementById('tempV').textContent=Math.round(cfg.temp)+'°F';
+    document.getElementById('speed').value=cfg.speed;
+    document.getElementById('speedV').textContent=(+cfg.speed).toFixed(1)+'×';
+    ['demo','reveal','ticks','ghost','tdir'].forEach(k=>document.getElementById(k).checked=!!cfg[k]);
+  }
+  function saveSettings(){
+    const data={geo:Object.assign({},geo), cfg:Object.assign({},cfg),
+                preset:document.getElementById('preset').value};
+    try{
+      localStorage.setItem(LSKEY, JSON.stringify(data));
+      showSaveMsg('ok','Saved ✓ — restores automatically next time this page opens.');
+    }catch(e){
+      memStore=data;
+      showSaveMsg('warn','Browser storage is blocked here — settings kept for this session only. Open the downloaded file directly in a browser to persist.');
+    }
+  }
+  function loadSettings(){
+    let data=null;
+    try{
+      const raw=localStorage.getItem(LSKEY);
+      if(raw) data=JSON.parse(raw);
+    }catch(e){ data=memStore; }
+    if(!data||!data.geo||!data.cfg) return false;
+    Object.keys(geo).forEach(k=>{ if(typeof data.geo[k]==='number') geo[k]=data.geo[k]; });
+    ['temp','tmin','tmax','speed','extMin','extMax'].forEach(k=>{ if(typeof data.cfg[k]==='number') cfg[k]=data.cfg[k]; });
+    cfg.speed=clamp(cfg.speed,0.05,1);
+    cfg.extMin=clamp(cfg.extMin,0,17); cfg.extMax=clamp(cfg.extMax,cfg.extMin+1,18);
+    ['demo','reveal','ticks','ghost','tdir'].forEach(k=>{ if(typeof data.cfg[k]==='boolean') cfg[k]=data.cfg[k]; });
+    if(data.preset) document.getElementById('preset').value=data.preset;
+    syncUI();
+    showSaveMsg('ok','Restored saved settings ✓');
+    return true;
+  }
+  function clearSettings(){
+    try{ localStorage.removeItem(LSKEY); }catch(e){}
+    memStore=null;
+    showSaveMsg('ok','Saved settings cleared — presets will load fresh next time.');
+  }
+  document.getElementById('save').addEventListener('click',saveSettings);
+  document.getElementById('clear').addEventListener('click',clearSettings);
+
+  // ---------- draggable mounts & hover labels ----------
+  let dragPivot=null, hoverPivot=null, hoverCompId=null, lastWorld=null;
+
+  const SLIDERNAMES={rA:'Crank radius rA', dA:'Anchor dist. dA', anch:'Anchor angle',
+    L2:'Crank arm L2', L3:'Coupler L3', cu:'Coupler pt u', cv:'Coupler pt v',
+    L4:'Rocker L4', gx:'Ground O4 x', gy:'Ground O4 y',
+    L5:'Link L5', L6:'Rocker L6', ox:'Ground O6 x', oy:'Ground O6 y',
+    cu2:'Indicator u', cv2:'Indicator v'};
+  const COMPINFO={
+    act:    {label:'Linear actuator (24″–42″ pin-to-pin)', sliders:['rA','dA','anch']},
+    anchorM:{label:'Actuator anchor mount',                sliders:['dA','anch']},
+    crank:  {label:'Bell crank — the input link',          sliders:['L2','rA']},
+    O2:     {label:'Bell-crank pivot O2',                  sliders:[], note:'Drag to shift the frame under everything else'},
+    plate1: {label:'Stage-1 coupler plate',                sliders:['L3','cu','cv']},
+    rock1:  {label:'Stage-1 rocker',                       sliders:['L4','gx','gy']},
+    O4:     {label:'Rocker-1 ground mount',                sliders:['gx','gy']},
+    plate2: {label:'Stage-2 coupler plate (carries the indicator)', sliders:['L5','cu2','cv2']},
+    rock2:  {label:'Stage-2 rocker',                       sliders:['L6','ox','oy']},
+    O6:     {label:'Rocker-2 ground mount',                sliders:['ox','oy']},
+    R:      {label:'Actuator rod pin — drag to set crank radius', sliders:['rA']},
+    B:      {label:'Coupler pin on bell crank — drag to set L2',  sliders:['L2']},
+    C:      {label:'Rocker-1 pin — drag to set L3 & L4',   sliders:['L3','L4']},
+    P:      {label:'Stage-1 coupler point — drag to reshape the plate', sliders:['cu','cv']},
+    D:      {label:'Rocker-2 pin — drag to set L5 & L6',   sliders:['L5','L6']},
+    Q:      {label:'Indicator — coupler point Q, drag to reposition', sliders:['cu2','cv2']}
+  };
+  function buildComps(p){
+    const out=[];
+    const pt=(id,q,r)=>{ if(q) out.push({id,type:'pt',s:TX(q),r:r||14}); };
+    const seg=(id,a,b)=>{ if(a&&b) out.push({id,type:'seg',a:TX(a),b:TX(b)}); };
+    const tri=(id,a,b,c)=>{ if(a&&b&&c) out.push({id,type:'tri',pts:[TX(a),TX(b),TX(c)]}); };
+    pt('anchorM',p.anchor); pt('O2',p.O2); pt('O4',p.O4); pt('O6',p.O6); pt('Q',p.Q,13);
+    pt('R',p.R,11); pt('B',p.B,11); pt('C',p.C,11); pt('P',p.P,11); pt('D',p.D,11);
+    seg('act',p.anchor,p.R);
+    const armEnd=(geo.rA>geo.L2)?p.R:p.B;
+    seg('crank',p.O2,armEnd);
+    seg('rock1',p.O4,p.C); seg('rock2',p.O6,p.D);
+    tri('plate1',p.B,p.C,p.P); tri('plate2',p.P,p.D,p.Q);
+    return out;
+  }
+  function distSeg(px,py,a,b){
+    const dx=b.x-a.x, dy=b.y-a.y, L2s=dx*dx+dy*dy;
+    if(L2s<1e-9) return Math.hypot(px-a.x,py-a.y);
+    const t=clamp(((px-a.x)*dx+(py-a.y)*dy)/L2s,0,1);
+    return Math.hypot(px-a.x-t*dx, py-a.y-t*dy);
+  }
+  function inTri(px,py,pts){
+    const [a,b,c]=pts;
+    const s=(p,q,r)=>(r.x-p.x)*(q.y-p.y)-(q.x-p.x)*(r.y-p.y);
+    const d1=s({x:px,y:py},a,b), d2=s({x:px,y:py},b,c), d3=s({x:px,y:py},c,a);
+    const neg=(d1<0)||(d2<0)||(d3<0), pos=(d1>0)||(d2>0)||(d3>0);
+    return !(neg&&pos);
+  }
+  function hitComp(sx,sy){
+    const p=pose(cfg.temp);
+    const comps=buildComps(p);
+    for(const c of comps) if(c.type==='pt'  && Math.hypot(c.s.x-sx,c.s.y-sy)<c.r) return c;
+    for(const c of comps) if(c.type==='seg' && distSeg(sx,sy,c.a,c.b)<9) return c;
+    for(const c of comps) if(c.type==='tri' && inTri(sx,sy,c.pts)) return c;
+    return null;
+  }
+  const tip=document.getElementById('tip');
+  function hlSliders(ids){
+    document.querySelectorAll('#panel .row.hl').forEach(r=>r.classList.remove('hl'));
+    ids.forEach(id=>{
+      const el=document.getElementById(id);
+      if(el&&el.parentElement&&el.parentElement.classList.contains('row'))
+        el.parentElement.classList.add('hl');
+    });
+  }
+  function showTip(e,info){
+    hlSliders(info.sliders);
+    tip.querySelector('.n').textContent=info.label;
+    tip.querySelector('.s').textContent=info.note||('Sliders: '+info.sliders.map(k=>SLIDERNAMES[k]).join(' · '));
+    tip.style.display='block';
+    const tw=tip.offsetWidth, th=tip.offsetHeight;
+    tip.style.left=Math.min(e.clientX+14, window.innerWidth-tw-8)+'px';
+    tip.style.top=Math.min(e.clientY+14, window.innerHeight-th-8)+'px';
+  }
+  function hideTip(){ tip.style.display='none'; hlSliders([]); hoverCompId=null; }
+  function pivotPos(name,p){
+    return {anchor:p.anchor, O2:p.O2, O4:p.O4, O6:p.O6,
+            R:p.R, B:p.B, C:p.C, P:p.P, D:p.D, Q:p.Q}[name];
+  }
+  const HANDLES=['anchor','O2','O4','O6','R','B','C','P','D','Q'];
+  function worldOf(e){
+    const r=canvas.getBoundingClientRect();
+    const sx=e.clientX-r.left, sy=e.clientY-r.top;
+    return {x:(sx-view.ox)/view.s, y:(sy-view.oy)/view.s, sx, sy};
+  }
+  function pickPivot(sx,sy){
+    if(!cfg.reveal) return null;
+    const p=pose(cfg.temp);
+    let best=null, bd=20;
+    HANDLES.forEach(n=>{
+      const q=pivotPos(n,p); if(!q) return;
+      const s=TX(q);
+      const d=Math.hypot(s.x-sx,s.y-sy);
+      if(d<bd){bd=d;best=n;}
+    });
+    return best;
+  }
+  function updGeoUI(keys){
+    keys.forEach(k=>{
+      const el=document.getElementById(k);
+      if(el){el.value=geo[k]; const o=document.getElementById(k+'V'); if(o)o.textContent=fmtGeo(k,geo[k]);}
+    });
+    document.getElementById('preset').value='custom';
+  }
+  canvas.addEventListener('pointerdown',e=>{
+    const w=worldOf(e);
+    dragPivot=pickPivot(w.sx,w.sy);
+    if(dragPivot){ hideTip(); lastWorld=w; canvas.setPointerCapture(e.pointerId); e.preventDefault(); }
+  });
+  canvas.addEventListener('pointerleave',hideTip);
+  // spacebar toggles auto-cycle — always, except while typing in a text/number field
+  function syncDemoPhase(){
+    // resume the cycle from the CURRENT temperature so toggling never jumps
+    const f=clamp((cfg.temp-cfg.tmin)/(cfg.tmax-cfg.tmin),0,1);
+    demoT=Math.acos(1-2*f)/(2*Math.PI);
+  }
+  window.addEventListener('keydown',e=>{
+    if(e.code!=='Space') return;
+    const el=document.activeElement;
+    if(el && el.tagName==='INPUT' && /text|number/.test(el.type)) return;
+    e.preventDefault();                 // stops focused buttons/checkboxes from re-firing
+    cfg.demo=!cfg.demo;
+    if(cfg.demo) syncDemoPhase();
+    document.getElementById('demo').checked=cfg.demo;
+  });
+  document.getElementById('demo').addEventListener('change',e=>{
+    if(e.target.checked) syncDemoPhase();
+  });
+  canvas.addEventListener('pointermove',e=>{
+    const w=worldOf(e);
+    if(!dragPivot){
+      const comp=cfg.reveal?hitComp(w.sx,w.sy):null;
+      hoverCompId=comp?comp.id:null;
+      hoverPivot=comp ? (comp.id==='anchorM'?'anchor':(HANDLES.includes(comp.id)?comp.id:null)) : null;
+      canvas.style.cursor=hoverPivot?'grab':(comp?'pointer':'default');
+      if(comp) showTip(e,COMPINFO[comp.id]); else hideTip();
+      return;
+    }
+    canvas.style.cursor='grabbing';
+    if(dragPivot==='O4'){
+      geo.gx=clamp(w.x,-24,30); geo.gy=clamp(w.y,-24,24); updGeoUI(['gx','gy']);
+    } else if(dragPivot==='O6'){
+      geo.ox=clamp(w.x,-28,34); geo.oy=clamp(w.y,-28,26); updGeoUI(['ox','oy']);
+    } else if(dragPivot==='anchor'){
+      geo.dA=clamp(Math.hypot(w.x,w.y),16,40);
+      geo.anch=Math.atan2(w.y,w.x)/DEG;
+      updGeoUI(['dA','anch']);
+    } else if(dragPivot==='O2'){
+      // O2 is the coordinate origin — moving it shifts everything else the other way
+      const dx=w.x-lastWorld.x, dy=w.y-lastWorld.y;
+      geo.gx=clamp(geo.gx-dx,-24,30); geo.gy=clamp(geo.gy-dy,-24,24);
+      geo.ox=clamp(geo.ox-dx,-28,34); geo.oy=clamp(geo.oy-dy,-28,26);
+      const ax=geo.dA*Math.cos(geo.anch*DEG)-dx, ay=geo.dA*Math.sin(geo.anch*DEG)-dy;
+      geo.dA=clamp(Math.hypot(ax,ay),16,40); geo.anch=Math.atan2(ay,ax)/DEG;
+      lastWorld=w;
+      updGeoUI(['gx','gy','ox','oy','dA','anch']);
+    } else {
+      // joint handles: dragging an endpoint re-sizes the links that meet there
+      const p=pose(cfg.temp);
+      if(dragPivot==='R'){
+        geo.rA=clamp(Math.hypot(w.x,w.y),8,24); updGeoUI(['rA']);
+      } else if(dragPivot==='B'){
+        geo.L2=clamp(Math.hypot(w.x,w.y),3,18); updGeoUI(['L2']);
+      } else if(dragPivot==='C'&&p.B){
+        geo.L3=clamp(Math.hypot(w.x-p.B.x,w.y-p.B.y),5,28);
+        geo.L4=clamp(Math.hypot(w.x-geo.gx,w.y-geo.gy),4,24);
+        updGeoUI(['L3','L4']);
+      } else if(dragPivot==='P'&&p.B&&p.C){
+        const ux=(p.C.x-p.B.x)/geo.L3, uy=(p.C.y-p.B.y)/geo.L3;
+        const dx=w.x-p.B.x, dy=w.y-p.B.y;
+        geo.cu=clamp(dx*ux+dy*uy,0,22);
+        geo.cv=clamp(-dx*uy+dy*ux,-14,14);
+        updGeoUI(['cu','cv']);
+      } else if(dragPivot==='D'&&p.P){
+        geo.L5=clamp(Math.hypot(w.x-p.P.x,w.y-p.P.y),4,28);
+        geo.L6=clamp(Math.hypot(w.x-geo.ox,w.y-geo.oy),4,22);
+        updGeoUI(['L5','L6']);
+      } else if(dragPivot==='Q'&&p.P&&p.D){
+        const dl=Math.hypot(p.D.x-p.P.x,p.D.y-p.P.y);
+        const vx=(p.D.x-p.P.x)/dl, vy=(p.D.y-p.P.y)/dl;
+        const dx=w.x-p.P.x, dy=w.y-p.P.y;
+        geo.cu2=clamp(dx*vx+dy*vy,0,24);
+        geo.cv2=clamp(-dx*vy+dy*vx,-16,16);
+        updGeoUI(['cu2','cv2']);
+      }
+    }
+    rebuildPath();                     // view refit is suppressed during the drag
+    e.preventDefault();
+  });
+  function endDrag(){
+    if(dragPivot){ dragPivot=null; rebuildPath(); }   // refit view once on release
+    canvas.style.cursor='default';
+  }
+  canvas.addEventListener('pointerup',endDrag);
+  canvas.addEventListener('pointercancel',endDrag);
+
+  // small debug/testing hook
+  window.__ct={
+    pivotScreen:n=>{const p=pose(cfg.temp); return TX(pivotPos(n,p));},
+    geo, cfg
+  };
+  document.getElementById('preset').addEventListener('change',e=>{
+    const v=e.target.value;
+    if(PRESETS[v]){ Object.assign(geo,PRESETS[v]); syncSliders(); rebuildPath(); }
+  });
+  document.getElementById('reset').addEventListener('click',()=>{
+    const v=document.getElementById('preset').value;
+    const src=PRESETS[v]||PRESETS.serpentine;
+    Object.assign(geo,src); syncSliders(); rebuildPath();
+  });
+  const panel=document.getElementById('panel');
+  document.getElementById('hide').addEventListener('click',()=>panel.classList.add('collapsed'));
+  document.getElementById('toggle').addEventListener('click',()=>panel.classList.remove('collapsed'));
+
+  function resize(){
+    W=window.innerWidth; H=window.innerHeight; DPR=Math.min(window.devicePixelRatio||1,2);
+    canvas.width=W*DPR; canvas.height=H*DPR;
+    canvas.style.width=W+'px'; canvas.style.height=H+'px';
+    ctx.setTransform(DPR,0,0,DPR,0,0);
+    rebuildPath();
+  }
+  window.addEventListener('resize',resize);
+  syncSliders();
+  loadSettings();
+  resize();
+  frame();
+})();
+</script>
+</body>
+</html>
