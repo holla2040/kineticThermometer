@@ -128,12 +128,12 @@
   <div class="sec">Display</div>
   <div class="checks">
     <label class="chk"><input type="checkbox" id="ticks" checked> Scale ticks</label>
-    <label class="chk"><input type="checkbox" id="ghost" checked> Inner curves</label>
-    <label class="chk"><input type="checkbox" id="showBox" checked> Bounding box</label>
+    <label class="chk"><input type="checkbox" id="ghost"> Inner curves</label>
+    <label class="chk"><input type="checkbox" id="showBox"> Bounding box</label>
   </div>
   <div class="row" style="margin-top:10px;">
-    <label>Rotate view <b id="rotV">0°</b></label>
-    <input type="range" id="rot" min="0" max="360" value="0" step="10">
+    <label>Rotate view <b id="rotV">110°</b></label>
+    <input type="range" id="rot" min="0" max="360" value="110" step="10">
   </div>
 
   <details class="fold">
@@ -216,20 +216,23 @@
   // presets re-searched for the REAL actuator envelope: 24″ retracted, 42″ extended
   // NOTE: grandarc still satisfies the mount rule (all fixed mounts on one side of the
   // scale, no mount-to-mount line crossing the spline). The hand-tuned serpentine does
-  // NOT — O6 clears the curve by 0.97″ and four mount pairs cross it. See CLAUDE.md;
-  // unresolved, and a build blocker. tools/analyze_geometry.py re-measures both.
+  // NOT — O2 clears the curve by only 2.06″ (rule: ≥2.5″) and three mount pairs cross it
+  // (O2–ACT, O4–ACT, O6–ACT). See CLAUDE.md; unresolved, and a build blocker.
+  // tools/analyze_geometry.py re-measures both — re-run it after ANY geometry change,
+  // these numbers go stale the moment the preset moves.
   const PRESETS={
-    serpentine:{rA:12.8, dA:27.3506, anch:-135.3211, gx:12.9, gy:-6.0, L2:11.4, L3:7.7705, L4:7.0142,
-                cu:3.5, cv:11.3, s1:-1, ox:6.30, oy:-16.71, L5:5.9, L6:14.0, cu2:14.665, cv2:9.6354, s2:-1},
+    serpentine:{rA:12.6151, dA:27.6388, anch:-133.1494, gx:12.9, gy:-6.0, L2:11.3701, L3:7.7705,
+                L4:7.0142, cu:3.5, cv:11.3, s1:-1, ox:6.9036, oy:-17.4189, L5:5.9, L6:14.0,
+                cu2:19.9991, cv2:13.1489, s2:-1},
     grandarc:  {rA:20.8, dA:31.7, anch:166.7, gx:-3.8, gy:-0.1, L2:11.9, L3:11.8, L4:12.6,
                 cu:19.6, cv:-5.2, s1:-1, ox:7.7, oy:-7.6, L5:8.5, L6:13.5, cu2:19.3, cv2:-12.0, s2:-1}
   };
 
   const geo=Object.assign({}, PRESETS.serpentine);
-  const cfg={temp:70, tmin:-20, tmax:110, demo:true, reveal:true, ticks:true, ghost:true, showBox:true, speed:0.1, tdir:false, rot:0,
+  const cfg={temp:70, tmin:-20, tmax:110, demo:true, reveal:true, ticks:true, ghost:false, showBox:false, speed:0.1, tdir:false, rot:110,
              extMin:0, extMax:15.5,    // used slice of the actuator stroke, in inches of extension
                                        // 15.5 is near the ceiling for the serpentine preset:
-                                       // dA+rA=40.15, so past ~15.65″ the drive triangle won't close
+                                       // dA+rA=40.25, so past ~15.75″ the drive triangle won't close
              hole:0.375, lwid:1.5};    // fabrication: pivot hole ⌀ and link stock width, inches
   // actuator stroke envelope (pin-to-pin): 24″ retracted + 18″ stroke = 42″ extended
   const ACT={lmin:24, stroke:18};
@@ -746,8 +749,8 @@
   });
 
   // ---------- persistence (guarded: silently degrades where storage is blocked) ----------
-  const LSKEY='couplerThermometer.v2';   // v2: real actuator envelope — old saves ignored
-  let memStore=null;
+  // No auto-restore slot: the page ALWAYS opens on the defaults compiled into this file,
+  // on first load and on any reload. Saved work is opt-in only, via the dropdown.
   function showSaveMsg(cls,txt){
     const m=document.getElementById('smsg');
     m.className=cls; m.textContent=txt;
@@ -772,7 +775,7 @@
     document.getElementById('rotV').textContent=cfg.rot+'°';
     ['demo','reveal','ticks','ghost','showBox','tdir'].forEach(k=>document.getElementById(k).checked=!!cfg[k]);
   }
-  // named designs live in one map under SAVESKEY; LSKEY stays the auto-restore slot
+  // named designs live in one map under SAVESKEY
   const SAVESKEY='couplerThermometer.saves';
   let memSaves={};
   function readSaves(){
@@ -807,28 +810,16 @@
   }
   function saveSettings(){
     const name=document.getElementById('sname').value.trim();
-    const data=snapshot();
-    let stored=true;
-    try{ localStorage.setItem(LSKEY, JSON.stringify(data)); }catch(e){ memStore=data; stored=false; }
-    if(name){
-      const s=readSaves(); s[name]=data;
-      stored=writeSaves(s)&&stored;
-      refreshSaveList(name);
-      document.getElementById('sname').value='';   // dropdown holds the record now
-    }
-    if(!stored) showSaveMsg('warn','Browser storage is blocked here — kept for this session only. Open the file directly (not through a sandboxed viewer) to persist.');
-    else if(name) showSaveMsg('ok','Saved as “'+name+'” ✓ — also restores automatically next time.');
-    else showSaveMsg('ok','Saved ✓ — restores automatically. Type a name to keep it as a separate design.');
-  }
-  function loadSettings(){
-    let data=null;
-    try{
-      const raw=localStorage.getItem(LSKEY);
-      if(raw) data=JSON.parse(raw);
-    }catch(e){ data=memStore; }
-    if(!applyData(data)) return false;
-    showSaveMsg('ok','Restored saved settings ✓');
-    return true;
+    // A name is required. Nothing is restored automatically any more, so a nameless save
+    // would write a slot nothing ever reads.
+    if(!name){ showSaveMsg('warn','Type a name first — saved designs are recalled from the dropdown.'); return; }
+    const s=readSaves(); s[name]=snapshot();
+    const stored=writeSaves(s);
+    refreshSaveList(name);
+    document.getElementById('sname').value='';     // dropdown holds the record now
+    showSaveMsg(stored?'ok':'warn', stored
+      ? 'Saved as “'+name+'” ✓ — recall it from the dropdown.'
+      : 'Browser storage is blocked here — “'+name+'” is kept for this session only.');
   }
   function deleteSave(){
     const name=document.getElementById('sname').value.trim();
@@ -1296,7 +1287,6 @@
   window.addEventListener('resize',resize);
   syncSliders();
   refreshSaveList();
-  loadSettings();
   resize();
   frame();
 })();

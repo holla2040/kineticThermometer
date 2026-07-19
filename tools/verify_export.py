@@ -47,6 +47,13 @@ with sync_playwright() as p:
     assert not errs, errs
 
     # ---- 1. named saves -------------------------------------------------
+    # a save with no name is refused -- there is no auto-restore slot to write
+    pg.fill("#sname", "")
+    pg.click("#save"); pg.wait_for_timeout(150)
+    assert pg.eval_on_selector_all("#sload option", "els=>els.length") == 1, "nameless save stored nothing"
+    assert "Type a name" in pg.inner_text("#smsg"), pg.inner_text("#smsg")
+    print("nameless save refused:", pg.inner_text("#smsg"))
+
     pg.fill("#sname", "bench test A")
     pg.evaluate("__ct.geo.L3 = 12.34")
     pg.click("#save")
@@ -65,12 +72,17 @@ with sync_playwright() as p:
     opts = pg.eval_on_selector_all("#sload option", "els=>els.map(e=>e.value)")
     assert opts == ["", "bench test A", "bench test B"], opts
 
-    # reload: list survives, autoload restored the last save
+    # reload: the saved-design list survives, but NOTHING is auto-restored -- the page
+    # must come up on the defaults compiled into index.html
+    defaults = pg.evaluate("({L3: __ct.geo.L3, rot: __ct.cfg.rot, ghost: __ct.cfg.ghost})")
     pg.reload(); pg.wait_for_timeout(500)
     assert not errs, errs
     opts = pg.eval_on_selector_all("#sload option", "els=>els.map(e=>e.value)")
     assert opts == ["", "bench test A", "bench test B"], opts
-    assert abs(pg.evaluate("__ct.geo.L3") - 20.0) < 1e-9, "autoload should give the last save"
+    fresh = pg.evaluate("({L3: __ct.geo.L3, rot: __ct.cfg.rot, ghost: __ct.cfg.ghost})")
+    assert abs(fresh["L3"] - 7.7705) < 1e-9, f"reload must give the default L3, got {fresh['L3']}"
+    assert fresh["rot"] == 110 and fresh["ghost"] is False, fresh
+    print("reload gives defaults, not the last save:", fresh)
 
     # load the older one by name
     pg.select_option("#sload", "bench test A")
@@ -91,7 +103,7 @@ with sync_playwright() as p:
     # back to the chosen preset, through the UI so the path cache rebuilds
     pg.select_option("#preset", "serpentine")
     pg.wait_for_timeout(200)
-    assert abs(pg.evaluate("__ct.geo.L3") - 7.7705) < 1e-9
+    assert abs(pg.evaluate("__ct.geo.cu2") - 19.9991) < 1e-9
     pg.fill("#hole", "0.375"); pg.dispatch_event("#hole", "change")
     pg.fill("#lwid", "1.5");   pg.dispatch_event("#lwid", "change")
 
@@ -377,20 +389,28 @@ with sync_playwright() as p:
         if (0.2126*d[i] + 0.7152*d[i+1] + 0.0722*d[i+2] > 28) lit++;   // background ~19
       }
       return lit; })()"""
-    assert pg.is_checked("#showBox"), "box is on by default"
-    on = pg.evaluate(probe)
-    pg.uncheck("#showBox"); pg.wait_for_timeout(300)
+    # the probe reconstructs world->screen as a pure scale about O2, so it only holds
+    # with the view square. rot defaults to 110, so zero it first.
+    pg.evaluate("const e=document.getElementById('rot');e.value=0;e.dispatchEvent(new Event('input'))")
+    pg.wait_for_timeout(200)
+    assert pg.is_checked("#showBox") is False, "box is OFF by default"
     off = pg.evaluate(probe)
-    assert on > 25 and off == 0, (on, off)
     pg.check("#showBox"); pg.wait_for_timeout(300)
-    assert pg.evaluate(probe) > 25, "re-checking brings the box back"
-    print(f"Bounding box checkbox: {on}/100 edge samples lit on, {off} off")
+    on = pg.evaluate(probe)
+    assert on > 25 and off == 0, (on, off)
+    pg.uncheck("#showBox"); pg.wait_for_timeout(300)
+    assert pg.evaluate(probe) == 0, "unchecking hides it again"
+    print(f"Bounding box checkbox: off by default, {on}/100 edge samples lit when on")
 
-    pg.uncheck("#showBox"); pg.fill("#sname", ""); pg.click("#save"); pg.wait_for_timeout(200)
+    # it rides along in a NAMED design, but a bare reload comes back at the default
+    pg.check("#showBox"); pg.fill("#sname", "box on"); pg.click("#save"); pg.wait_for_timeout(200)
     pg.reload(); pg.wait_for_timeout(700)
-    assert pg.is_checked("#showBox") is False, "unchecked state must survive reload"
-    print("box visibility persists through save + reload")
-    pg.check("#showBox"); pg.click("#save"); pg.wait_for_timeout(150)
+    assert pg.is_checked("#showBox") is False, "reload must give the default, not the last save"
+    pg.select_option("#sload", "box on"); pg.wait_for_timeout(300)
+    assert pg.is_checked("#showBox") is True, "recalling the design brings it back"
+    pg.fill("#sname", "box on"); pg.click("#del"); pg.wait_for_timeout(150)
+    pg.uncheck("#showBox"); pg.wait_for_timeout(150)
+    print("box visibility rides in a named design; reload gives the default")
 
     # ---- 6c. view rotation ------------------------------------------------
     pg.select_option("#preset", "serpentine"); pg.wait_for_timeout(250)
@@ -437,11 +457,14 @@ with sync_playwright() as p:
         assert abs(mid["x"]-o4["x"]-60) < 2 and abs(mid["y"]-o4["y"]-40) < 2, (a, o4, mid)
     print("grabbed pivots follow the cursor exactly at 0/90/210 degrees")
 
-    setrot(140); pg.fill("#sname", ""); pg.click("#save"); pg.wait_for_timeout(200)
+    setrot(140); pg.fill("#sname", "rot 140"); pg.click("#save"); pg.wait_for_timeout(200)
     pg.reload(); pg.wait_for_timeout(800)
+    assert pg.evaluate("__ct.cfg.rot") == 110, "reload gives the 110 default, not the save"
+    pg.select_option("#sload", "rot 140"); pg.wait_for_timeout(300)
     assert pg.evaluate("__ct.cfg.rot") == 140, pg.evaluate("__ct.cfg.rot")
     assert pg.input_value("#rot") == "140" and "140" in pg.inner_text("#rotV")
-    print("rotation is saved and restored, slider and label follow")
+    pg.fill("#sname", "rot 140"); pg.click("#del"); pg.wait_for_timeout(150)
+    print("rotation rides in a named design, slider and label follow on recall")
 
     # Reset preset squares the view back up, and undo puts the rotation back
     setrot(120)
@@ -451,7 +474,7 @@ with sync_playwright() as p:
     pg.keyboard.press("Control+z"); pg.wait_for_timeout(250)
     assert pg.evaluate("__ct.cfg.rot") == 120, pg.evaluate("__ct.cfg.rot")
     print("Reset zeroes rotation; undo restores it")
-    setrot(0); pg.click("#save"); pg.wait_for_timeout(150)
+    setrot(0)
 
     # ---- 7. actuator rod end has an inner curve --------------------------
     assert pg.evaluate("Object.keys(__ct.pathJ)").count("R") == 1
