@@ -29,14 +29,28 @@ where it opens out. That unevenness is the mechanism, not the recording.
   bounding box gives the piece's footprint in inches at the current view
   angle. Double-click recentres and resets zoom. Exports DXF for Fusion —
   see below.
+- `mobile.html` — the same simulator, portrait-first for a phone. A narrow
+  touch screen opening the live demo lands here automatically; add
+  `?desktop=1` to force the desktop page instead. The controls live in a
+  bottom sheet you drag open, and **there are no geometry sliders**: every
+  length and mount position is set by dragging its pin, with the values you
+  are changing shown at the top of the screen. Pinch to zoom (also how you
+  get fine control — at 12× a pixel is about a hundredth of an inch),
+  double-tap to recentre, and use the ▶ ↶ ⌖ buttons in place of the
+  keyboard. Turned sideways the sheet becomes a left drawer. Presets, saves
+  and both DXF exports all work. See "Two files, one core" below.
 - `tools/search_geometry.py` — the constrained random search that found
   the preset geometries. `python3 tools/search_geometry.py` (a few minutes).
 - `tools/analyze_geometry.py` — measures a saved design against the
   fabrication constraints: assembly across the stroke, scale length, per-10°F
   step lengths, cusps and kinks, mount clearance, and the actuator-triangle
   ceiling. Feed it a `__ct.dump()` capture (see below).
-- `tools/verify_export.py` — drives the page headless and checks the whole
-  UI and both DXF exports. Run it after changing `index.html`.
+- `tools/verify_export.py` — drives `index.html` headless and checks the
+  whole UI and both DXF exports. Run it after changing `index.html`.
+- `tools/verify_mobile.py` — the same for `mobile.html` on a 390×844 phone
+  viewport: the sheet, touch hit radii, pinch, double-tap, the drag
+  tooltip, control parity against the desktop, and the landscape drawer.
+- `tools/sync_core.py` — keeps the two pages' shared half identical.
 - `FABRICATION.md` — what a shop needs: the chosen geometry, the measured
   scale behaviour, the DXF layer reference, and the concerns to settle before
   anything is cut.
@@ -61,6 +75,29 @@ Curves come out as line segments, not splines — fit a spline in Fusion if
 you want one entity. The export carries the same 1° path divisions the
 simulator draws, on layer `PATH_DIVISIONS`, so the engraving matches the
 screen. Full layer reference in [FABRICATION.md](FABRICATION.md).
+
+## Two files, one core
+
+`index.html` and `mobile.html` are two hand-maintained pages that share one
+solver, one DXF writer and one set of presets. That shared half — about 1050
+of each file's ~1550 lines — sits between marker comments:
+
+```
+// ==== SHARED CORE START ====
+// ==== SHARED CORE END ====
+```
+
+Edit the physics in `index.html`, then:
+
+```
+python3 tools/sync_core.py --apply     # copy it into mobile.html
+python3 tools/sync_core.py             # --check: fail if they differ
+```
+
+Below the END marker each page keeps its own interaction layer — hit radii,
+gestures, tooltips, resize — and that is deliberately different. Run the
+`--check` after any change to either file; a silent drift between the two
+would mean the phone and the desktop disagree about the geometry you cut.
 
 ## Handing a tuned design back
 

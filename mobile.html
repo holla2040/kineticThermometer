@@ -2,240 +2,256 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Coupler-Curve Thermometer — Multi Four-Bar Simulator</title>
-<script>
-  // A narrow touch screen gets the portrait build instead. replace(), not assign(), so
-  // Back doesn't bounce between the two. ?desktop=1 forces this page anywhere — that is
-  // the escape hatch for the geometry sliders, which mobile.html does not carry.
-  if(matchMedia('(max-width:820px)').matches && navigator.maxTouchPoints>0
-     && !/(^|[?&])desktop=/.test(location.search))
-    location.replace('mobile.html'+location.search+location.hash);
-</script>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Coupler-Curve Thermometer — Portrait</title>
 <style>
   :root{
     --bg:#10141b; --panel:#161b24; --border:#28303d; --text:#e8edf3; --muted:#8a94a6;
     --accent:#f6a833; --accent2:#4fd1c5; --brass:#d9a441; --steel:#9fb0c3;
     --warn:#f2c14e; --bad:#ef5350;
+    --peek:168px;                       /* collapsed sheet height, without the safe area */
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
   html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
-    overflow:hidden;touch-action:none;}
-  canvas{position:fixed;inset:0;width:100%;height:100%;display:block;}
+    overflow:hidden;}
+  /* touch-action lives on the canvas ONLY. Putting it on body (as index.html does) also
+     suppresses touch scrolling inside the panel, which makes a scrolling sheet useless. */
+  canvas{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none;}
 
-  #panel{position:absolute;top:12px;left:12px;width:272px;max-width:calc(100vw - 24px);
-    background:rgba(22,27,36,.94);backdrop-filter:blur(9px);border:1px solid var(--border);
-    border-radius:15px;padding:14px 16px;box-shadow:0 10px 34px rgba(0,0,0,.45);
-    max-height:calc(100vh - 24px);overflow-y:auto;transition:transform .25s,opacity .25s;}
-  #panel.collapsed{transform:translateX(calc(-100% - 18px));opacity:0;pointer-events:none;}
-  h1{font-size:14px;margin:0 0 2px;letter-spacing:.3px;}
-  .sub{font-size:11px;color:var(--muted);margin:0 0 10px;line-height:1.4;}
-  .sec{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);
-    margin:14px 0 8px;border-top:1px solid var(--border);padding-top:11px;}
-  details.fold{border-top:1px solid var(--border);margin:14px 0 8px;padding-top:11px;}
-  details.fold summary{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);
-    cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center;user-select:none;}
-  details.fold summary:hover{color:var(--text);}
+  /* ---------- bottom sheet ---------- */
+  #sheet{position:fixed;left:0;right:0;bottom:0;z-index:4;
+    display:flex;flex-direction:column;overflow:hidden;
+    background:rgba(22,27,36,.96);backdrop-filter:blur(9px);
+    border-top:1px solid var(--border);border-radius:18px 18px 0 0;
+    box-shadow:0 -8px 34px rgba(0,0,0,.5);
+    padding-bottom:env(safe-area-inset-bottom);
+    transition:height .22s ease;}
+  #sheet.peek{height:calc(var(--peek) + env(safe-area-inset-bottom));}
+  #sheet.open{height:calc(72dvh + env(safe-area-inset-bottom));}
+  #grab{flex:0 0 auto;height:26px;display:flex;align-items:center;justify-content:center;
+    cursor:pointer;touch-action:none;}
+  #grab span{width:40px;height:5px;border-radius:3px;background:var(--border);}
+  #sheet.open #grab span{background:var(--accent);}
+  #sheethead{flex:0 0 auto;padding:0 16px 10px;}
+  #sheetbody{flex:1 1 auto;min-height:0;padding:0 16px 18px;
+    overflow-y:auto;-webkit-overflow-scrolling:touch;
+    touch-action:pan-y;overscroll-behavior:contain;}
+
+  /* ---------- floating toolbar (there is no Space or Ctrl+Z on a phone) ---------- */
+  #tools{position:fixed;top:calc(10px + env(safe-area-inset-top));right:10px;z-index:6;
+    display:flex;flex-direction:column;gap:8px;}
+  #tools button{width:46px;height:46px;padding:0;border-radius:14px;font-size:19px;
+    background:rgba(22,27,36,.93);border:1px solid var(--border);color:var(--text);}
+  #tools button:disabled{opacity:.35;}
+
+  /* ---------- typography and controls, sized for fingers ---------- */
+  h1{font-size:15px;margin:0;letter-spacing:.3px;}
+  .sec{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);
+    margin:16px 0 8px;border-top:1px solid var(--border);padding-top:12px;}
+  details.fold{border-top:1px solid var(--border);margin:16px 0 8px;}
+  details.fold summary{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);
+    cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center;
+    user-select:none;min-height:44px;}
   details.fold summary::-webkit-details-marker{display:none;}
-  details.fold summary::after{content:'▸';font-size:11px;transition:transform .15s;}
+  details.fold summary::after{content:'▸';font-size:13px;transition:transform .15s;}
   details.fold[open] summary::after{transform:rotate(90deg);}
-  .row{margin:9px 0;}
-  .row label{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:5px;}
+  .row{margin:12px 0;}
+  .row label{display:flex;justify-content:space-between;font-size:13px;color:var(--muted);margin-bottom:7px;}
   .row label b{color:var(--text);font-variant-numeric:tabular-nums;font-weight:600;}
-  input[type=range]{width:100%;height:4px;-webkit-appearance:none;appearance:none;
-    background:var(--border);border-radius:4px;outline:none;}
-  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:17px;height:17px;
-    border-radius:50%;background:var(--accent);cursor:pointer;border:2px solid var(--bg);}
-  input[type=range]::-moz-range-thumb{width:17px;height:17px;border-radius:50%;
-    background:var(--accent);cursor:pointer;border:2px solid var(--bg);}
+  input[type=range]{width:100%;height:6px;-webkit-appearance:none;appearance:none;
+    background:var(--border);border-radius:4px;outline:none;margin:9px 0;}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:26px;height:26px;
+    border-radius:50%;background:var(--accent);border:2px solid var(--bg);}
+  input[type=range]::-moz-range-thumb{width:26px;height:26px;border-radius:50%;
+    background:var(--accent);border:2px solid var(--bg);}
   input[type=range].temp::-webkit-slider-thumb{background:var(--accent2);}
   input[type=range].temp::-moz-range-thumb{background:var(--accent2);}
-  select{width:100%;background:#10151d;color:var(--text);border:1px solid var(--border);
-    border-radius:9px;padding:8px;font-size:12px;font-weight:600;}
-  input[type=number],input[type=text]{width:100%;background:#10151d;color:var(--text);border:1px solid var(--border);
-    border-radius:9px;padding:7px 9px;font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;}
-  input[type=number]:focus,input[type=text]:focus{outline:none;border-color:var(--accent2);}
-  .pair{display:flex;gap:8px;}
+  /* 16px is the floor: below it iOS Safari zooms the page the moment a field is focused */
+  select,input[type=number],input[type=text]{width:100%;background:#10151d;color:var(--text);
+    border:1px solid var(--border);border-radius:10px;padding:11px;font-size:16px;
+    font-weight:600;font-variant-numeric:tabular-nums;min-height:44px;}
+  select:focus,input:focus{outline:none;border-color:var(--accent2);}
+  .pair{display:flex;gap:10px;}
   .pair>div{flex:1;}
-  .pair label{display:block;font-size:11px;color:var(--muted);margin-bottom:5px;}
-  .checks{display:flex;flex-wrap:wrap;gap:8px 13px;margin-top:6px;}
-  .chk{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);cursor:pointer;user-select:none;}
-  .chk input{accent-color:var(--accent);width:15px;height:15px;}
-  .btns{display:flex;gap:8px;margin-top:12px;}
-  button{flex:1;background:var(--border);color:var(--text);border:none;border-radius:9px;
-    padding:9px;font-size:12px;cursor:pointer;font-weight:600;}
-  button:hover{background:#333c4b;}
+  .pair label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px;}
+  .checks{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;margin-top:8px;}
+  .chk{display:flex;align-items:center;gap:9px;font-size:14px;color:var(--muted);
+    cursor:pointer;user-select:none;min-height:44px;}
+  .chk input{accent-color:var(--accent);width:22px;height:22px;flex:0 0 auto;}
+  .btns{display:flex;gap:10px;margin-top:12px;}
+  button{flex:1;background:var(--border);color:var(--text);border:none;border-radius:10px;
+    padding:13px;font-size:15px;font-weight:600;min-height:46px;cursor:pointer;}
   button.primary{background:var(--accent);color:#2a1a00;}
-  button:disabled{opacity:.38;cursor:default;}
-  button:disabled:hover{background:var(--border);}
-  .readout{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px;}
-  .stat{background:#10151d;border:1px solid var(--border);border-radius:10px;padding:7px 10px;}
-  .stat .k{font-size:9px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);}
-  .stat .v{font-size:14px;font-weight:700;font-variant-numeric:tabular-nums;margin-top:2px;}
-  #tmsg,#smsg,#emsg{font-size:11px;margin-top:8px;padding:7px 9px;border-radius:8px;line-height:1.35;display:none;}
+  button:disabled{opacity:.38;}
+  .readout{display:grid;grid-template-columns:1fr 1fr;gap:9px;}
+  .stat{background:#10151d;border:1px solid var(--border);border-radius:11px;padding:8px 11px;}
+  .stat .k{font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);}
+  .stat .v{font-size:16px;font-weight:700;font-variant-numeric:tabular-nums;margin-top:2px;}
+  #tmsg,#smsg,#emsg{font-size:12px;margin-top:9px;padding:8px 10px;border-radius:9px;
+    line-height:1.35;display:none;}
   #tmsg.bad,#smsg.bad,#emsg.bad{display:block;background:rgba(239,83,80,.12);color:var(--bad);border:1px solid rgba(239,83,80,.35);}
   #tmsg.ok,#smsg.ok,#emsg.ok{display:block;background:rgba(79,209,197,.1);color:var(--accent2);border:1px solid rgba(79,209,197,.28);}
   #smsg.warn,#emsg.warn{display:block;background:rgba(242,193,78,.12);color:var(--warn);border:1px solid rgba(242,193,78,.3);}
-
-  #tip{position:fixed;pointer-events:none;z-index:8;display:none;max-width:230px;
-    background:rgba(22,27,36,.97);border:1px solid rgba(246,168,51,.55);border-radius:10px;
-    padding:8px 11px;box-shadow:0 6px 22px rgba(0,0,0,.5);}
-  #tip .n{font-size:12px;font-weight:700;color:var(--text);}
-  #tip .s{font-size:11px;color:var(--muted);margin-top:3px;line-height:1.4;}
   .row.hl{background:rgba(246,168,51,.1);box-shadow:0 0 0 5px rgba(246,168,51,.1);border-radius:6px;}
-  #toggle{position:absolute;top:12px;left:12px;z-index:5;width:42px;height:42px;border-radius:12px;
-    background:rgba(22,27,36,.93);border:1px solid var(--border);display:none;align-items:center;
-    justify-content:center;cursor:pointer;font-size:19px;color:var(--text);}
-  #panel.collapsed ~ #toggle{display:flex;}
-  #hint{position:absolute;bottom:12px;left:0;right:0;text-align:center;font-size:12px;color:var(--muted);pointer-events:none;padding:0 12px;}
+  .credit{font-size:11px;color:#5a6472;margin-top:16px;text-align:center;line-height:1.5;}
+  .credit a{color:var(--muted);}
 
-  /* help — a native <dialog>, so Escape closes it for free */
-  .hdr{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;}
-  #help{flex:0 0 auto;width:22px;height:22px;padding:0;border-radius:50%;
+  /* ---------- drag tooltip: pinned to the top, because your finger is on the part ---------- */
+  #tip{position:fixed;top:calc(10px + env(safe-area-inset-top));left:12px;right:68px;
+    z-index:7;display:none;pointer-events:none;
+    background:rgba(22,27,36,.97);border:1px solid rgba(246,168,51,.55);border-radius:11px;
+    padding:9px 12px;box-shadow:0 6px 22px rgba(0,0,0,.5);}
+  #tip .n{font-size:13px;font-weight:700;color:var(--text);}
+  #tip .s{font-size:13px;color:var(--accent);margin-top:3px;line-height:1.4;
+    font-variant-numeric:tabular-nums;}
+
+  /* ---------- help ---------- */
+  #help{flex:0 0 auto;width:30px;height:30px;padding:0;border-radius:50%;
     background:#10151d;border:1px solid var(--border);color:var(--muted);
-    font-size:12px;font-weight:700;line-height:1;cursor:pointer;}
-  #help:hover{background:#10151d;color:var(--accent);border-color:var(--accent);}
-  #helpdlg{max-width:560px;width:calc(100vw - 32px);max-height:calc(100vh - 48px);
+    font-size:14px;font-weight:700;line-height:1;}
+  #helpdlg{max-width:560px;width:calc(100vw - 24px);max-height:calc(100dvh - 40px);
     background:var(--panel);color:var(--text);border:1px solid var(--border);
     border-radius:15px;padding:0;box-shadow:0 18px 60px rgba(0,0,0,.6);overflow:hidden;}
   #helpdlg::backdrop{background:rgba(6,9,14,.66);}
-  #helpbody{padding:20px 22px;overflow-y:auto;max-height:calc(100vh - 48px);
-    font-size:12.5px;line-height:1.5;}
-  #helpbody h2{font-size:15px;margin:0 0 4px;}
-  #helpbody h3{font-size:10px;text-transform:uppercase;letter-spacing:1px;
-    color:var(--muted);margin:16px 0 6px;border-top:1px solid var(--border);padding-top:11px;}
-  #helpbody p{margin:0 0 8px;color:var(--muted);}
-  #helpbody dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:5px 12px;}
-  #helpbody dt{color:var(--accent2);font-weight:600;white-space:nowrap;}
+  #helpbody{padding:20px 20px 26px;overflow-y:auto;max-height:calc(100dvh - 40px);
+    font-size:14px;line-height:1.55;}
+  #helpbody h2{font-size:17px;margin:0 0 4px;padding-right:34px;}
+  #helpbody h3{font-size:11px;text-transform:uppercase;letter-spacing:1px;
+    color:var(--muted);margin:18px 0 7px;border-top:1px solid var(--border);padding-top:12px;}
+  #helpbody p{margin:0 0 9px;color:var(--muted);}
+  #helpbody dl{margin:0;}
+  #helpbody dt{color:var(--accent2);font-weight:600;margin-top:9px;}
   #helpbody dd{margin:0;color:var(--muted);}
   #helpbody b{color:var(--text);font-weight:600;}
-  #helpclose{position:absolute;top:12px;right:14px;flex:0 0 auto;width:26px;height:26px;
-    padding:0;border-radius:50%;background:var(--border);color:var(--text);
-    font-size:15px;line-height:1;cursor:pointer;}
-  .credit{font-size:10px;color:#5a6472;margin-top:12px;text-align:center;line-height:1.5;}
+  #helpclose{position:absolute;top:10px;right:12px;flex:0 0 auto;width:34px;height:34px;
+    min-height:34px;padding:0;border-radius:50%;background:var(--border);color:var(--text);
+    font-size:18px;line-height:1;}
+
+  /* ---------- landscape: the sheet becomes a left drawer ---------- */
+  /* A bottom sheet on a 390px-tall screen leaves no drawing, so turn it on its side.
+     Same markup, same handlers — only the box moves. Keep 312 in step with VIEWINSET. */
+  @media (orientation:landscape){
+    #sheet{top:12px;bottom:12px;left:12px;right:auto;width:300px;
+      height:auto !important;border:1px solid var(--border);border-radius:15px;
+      padding-bottom:0;}
+    #grab{display:none;}
+    #sheethead{padding-top:14px;}
+    #tip{left:auto;right:68px;width:280px;}
+  }
 </style>
 </head>
 <body>
 <canvas id="c"></canvas>
 
-<div id="panel">
-  <div class="hdr">
-    <h1>Coupler-Curve Thermometer</h1>
-    <button id="help" title="Help" aria-label="Help">?</button>
-  </div>
-  <p class="sub">Linear actuator (24″ retracted / 42″ extended, 18″ stroke) → bell crank → four-bar → second four-bar. The indicator IS a coupler point — the scale is the spline it traces.</p>
-
-  <div class="readout">
-    <div class="stat"><div class="k">Temperature</div><div class="v" id="oT">—</div></div>
-    <div class="stat"><div class="k">Actuator ext.</div><div class="v" id="oE">—</div></div>
-    <div class="stat"><div class="k">Scale length</div><div class="v" id="oL">—</div></div>
-    <div class="stat"><div class="k">Speed ratio</div><div class="v" id="oR">—</div></div>
-  </div>
-  <div id="tmsg"></div>
-
-  <div class="sec">Preset</div>
-  <select id="preset">
-    <option value="serpentine">Serpentine — S-curve with end hook</option>
-    <option value="grandarc">Grand Arc — 5½ ft sweeping curve</option>
-    <option value="custom">Custom (your slider edits)</option>
-  </select>
-
-  <div class="sec">Temperature</div>
-  <div class="row">
-    <label>Reading <b id="tempV">70°F</b></label>
-    <input type="range" class="temp" id="temp" min="-20" max="110" value="70" step="0.5">
-  </div>
-  <div class="row pair">
-    <div><label>Scale min °F</label><input type="number" id="tmin" value="-20" step="5" min="-80" max="200"></div>
-    <div><label>Scale max °F</label><input type="number" id="tmax" value="110" step="5" min="-80" max="200"></div>
-  </div>
-  <div class="checks">
-    <label class="chk"><input type="checkbox" id="demo" checked> Animate</label>
-    <label class="chk"><input type="checkbox" id="tdir"> Reverse scale</label>
-  </div>
-  <div class="row" style="margin-top:10px;">
-    <label>Animation speed <b id="speedV">0.1×</b></label>
-    <input type="range" id="speed" min="0.05" max="1" value="0.1" step="0.05">
-  </div>
-
-  <div class="sec">Display</div>
-  <div class="checks">
-    <label class="chk"><input type="checkbox" id="ticks" checked> Scale ticks</label>
-    <label class="chk"><input type="checkbox" id="ghost"> Inner curves</label>
-    <label class="chk"><input type="checkbox" id="showBox"> Bounding box</label>
-    <label class="chk"><input type="checkbox" id="dims"> Dimensions</label>
-  </div>
-  <div class="row" style="margin-top:10px;">
-    <label>Rotate view <b id="rotV">110°</b></label>
-    <input type="range" id="rot" min="0" max="360" value="110" step="10">
-  </div>
-
-  <details class="fold">
-    <summary>Stage 1 four-bar (inches)</summary>
-    <div class="row"><label>Crank arm L2 <b id="L2V"></b></label><input type="range" id="L2" min="3" max="18" step="0.1"></div>
-    <div class="row"><label>Coupler L3 <b id="L3V"></b></label><input type="range" id="L3" min="5" max="28" step="0.1"></div>
-    <div class="row"><label>Rocker L4 <b id="L4V"></b></label><input type="range" id="L4" min="4" max="24" step="0.1"></div>
-    <div class="row"><label>Ground O4 x <b id="gxV"></b></label><input type="range" id="gx" min="-24" max="30" step="0.1"></div>
-    <div class="row"><label>Ground O4 y <b id="gyV"></b></label><input type="range" id="gy" min="-24" max="24" step="0.1"></div>
-    <div class="row"><label>Coupler pt u <b id="cuV"></b></label><input type="range" id="cu" min="0" max="22" step="0.1"></div>
-    <div class="row"><label>Coupler pt v <b id="cvV"></b></label><input type="range" id="cv" min="-14" max="14" step="0.1"></div>
-  </details>
-
-  <details class="fold">
-    <summary>Stage 2 four-bar</summary>
-    <div class="row"><label>Link L5 <b id="L5V"></b></label><input type="range" id="L5" min="4" max="28" step="0.1"></div>
-    <div class="row"><label>Rocker L6 <b id="L6V"></b></label><input type="range" id="L6" min="4" max="22" step="0.1"></div>
-    <div class="row"><label>Ground O6 x <b id="oxV"></b></label><input type="range" id="ox" min="-28" max="34" step="0.1"></div>
-    <div class="row"><label>Ground O6 y <b id="oyV"></b></label><input type="range" id="oy" min="-28" max="26" step="0.1"></div>
-    <div class="row"><label>Indicator u <b id="cu2V"></b></label><input type="range" id="cu2" min="0" max="24" step="0.1"></div>
-    <div class="row"><label>Indicator v <b id="cv2V"></b></label><input type="range" id="cv2" min="-16" max="16" step="0.1"></div>
-  </details>
-
-  <details class="fold">
-    <summary>Actuator drive (24″–42″)</summary>
-    <div class="row pair">
-      <div><label>Excursion min ″</label><input type="number" id="extMin" value="0" step="0.5" min="0" max="18"></div>
-      <div><label>Excursion max ″</label><input type="number" id="extMax" value="17" step="0.5" min="0" max="18"></div>
-    </div>
-    <div class="row"><label>Crank radius rA <b id="rAV"></b></label><input type="range" id="rA" min="8" max="24" step="0.1"></div>
-    <div class="row"><label>Anchor dist. dA <b id="dAV"></b></label><input type="range" id="dA" min="16" max="40" step="0.1"></div>
-    <div class="row"><label>Anchor angle <b id="anchV"></b></label><input type="range" id="anch" min="-180" max="180" step="1"></div>
-    <div class="checks">
-      <label class="chk"><input type="checkbox" id="s1c"> Flip stage 1</label>
-      <label class="chk"><input type="checkbox" id="s2c"> Flip stage 2</label>
-    </div>
-  </details>
-
-  <div class="sec">Saved settings</div>
-  <div class="row" style="margin-top:6px;">
-    <input type="text" id="sname" placeholder="Design name (optional)" autocomplete="off">
-  </div>
-  <select id="sload"><option value="">Load a saved design…</option></select>
-  <div class="btns" style="margin-top:8px;">
-    <button class="primary" id="save">Save</button>
-    <button id="del">Delete</button>
-  </div>
-  <div id="smsg"></div>
-
-  <div class="sec">Export for Fusion (DXF)</div>
-  <div class="row pair">
-    <div><label>Pivot hole ⌀ ″</label><input type="number" id="hole" value="0.375" step="0.0625" min="0.0625" max="2"></div>
-    <div><label>Link width ″</label><input type="number" id="lwid" value="1.5" step="0.25" min="0.5" max="6"></div>
-  </div>
-  <div class="btns" style="margin-top:8px;">
-    <button class="primary" id="expParts">Parts DXF</button>
-    <button id="expPoints">Points DXF</button>
-  </div>
-  <div id="emsg"></div>
-
-  <div class="btns">
-    <button id="undo" disabled>↶ Undo</button>
-    <button class="primary" id="reset">Reset preset</button>
-    <button id="hide">Hide</button>
-  </div>
-  <div class="credit">Ticks are equal steps of temperature —<br>their spacing on the spline is the mechanism talking.</div>
+<div id="tools">
+  <button id="tbPlay" title="Play / pause" aria-label="Play or pause">▶</button>
+  <button id="tbUndo" title="Undo" aria-label="Undo" disabled>↶</button>
+  <button id="tbFit" title="Recentre" aria-label="Recentre and reset zoom">⌖</button>
 </div>
+
+<div id="tip"><div class="n"></div><div class="s"></div></div>
+
+<div id="sheet" class="peek">
+  <div id="grab" role="button" tabindex="0" aria-label="Expand or collapse the controls"><span></span></div>
+  <div id="sheethead">
+    <div class="readout">
+      <div class="stat"><div class="k">Temperature</div><div class="v" id="oT">—</div></div>
+      <div class="stat"><div class="k">Actuator ext.</div><div class="v" id="oE">—</div></div>
+    </div>
+    <div class="row" style="margin-bottom:0;">
+      <label>Reading <b id="tempV">70°F</b></label>
+      <input type="range" class="temp" id="temp" min="-20" max="110" value="70" step="0.5">
+    </div>
+    <div id="tmsg"></div>
+  </div>
+
+  <div id="sheetbody">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:4px;">
+      <h1>Coupler-Curve Thermometer</h1>
+      <button id="help" title="Help" aria-label="Help">?</button>
+    </div>
+
+    <div class="sec">Preset</div>
+    <select id="preset">
+      <option value="serpentine">Serpentine — S-curve with end hook</option>
+      <option value="grandarc">Grand Arc — 5½ ft sweeping curve</option>
+      <option value="custom">Custom (your drag edits)</option>
+    </select>
+
+    <div class="sec">Temperature</div>
+    <div class="row pair">
+      <div><label>Scale min °F</label><input type="number" inputmode="numeric" id="tmin" value="-20" step="5" min="-80" max="200"></div>
+      <div><label>Scale max °F</label><input type="number" inputmode="numeric" id="tmax" value="110" step="5" min="-80" max="200"></div>
+    </div>
+    <div class="checks">
+      <label class="chk"><input type="checkbox" id="demo" checked> Animate</label>
+      <label class="chk"><input type="checkbox" id="tdir"> Reverse scale</label>
+    </div>
+    <div class="row">
+      <label>Animation speed <b id="speedV">0.1×</b></label>
+      <input type="range" id="speed" min="0.05" max="1" value="0.1" step="0.05">
+    </div>
+
+    <div class="sec">Display</div>
+    <div class="readout">
+      <div class="stat"><div class="k">Scale length</div><div class="v" id="oL">—</div></div>
+      <div class="stat"><div class="k">Speed ratio</div><div class="v" id="oR">—</div></div>
+    </div>
+    <div class="checks">
+      <label class="chk"><input type="checkbox" id="ticks" checked> Scale ticks</label>
+      <label class="chk"><input type="checkbox" id="ghost"> Inner curves</label>
+      <label class="chk"><input type="checkbox" id="showBox"> Bounding box</label>
+      <label class="chk"><input type="checkbox" id="dims"> Dimensions</label>
+    </div>
+    <div class="row">
+      <label>Rotate view <b id="rotV">110°</b></label>
+      <input type="range" id="rot" min="0" max="360" value="110" step="10">
+    </div>
+
+    <details class="fold">
+      <summary>Actuator drive (24″–42″)</summary>
+      <div class="row pair">
+        <div><label>Excursion min ″</label><input type="number" inputmode="decimal" id="extMin" value="0" step="0.5" min="0" max="18"></div>
+        <div><label>Excursion max ″</label><input type="number" inputmode="decimal" id="extMax" value="17" step="0.5" min="0" max="18"></div>
+      </div>
+      <div class="checks">
+        <label class="chk"><input type="checkbox" id="s1c"> Flip stage 1</label>
+        <label class="chk"><input type="checkbox" id="s2c"> Flip stage 2</label>
+      </div>
+    </details>
+
+    <div class="sec">Saved designs</div>
+    <div class="row" style="margin-top:8px;">
+      <input type="text" id="sname" placeholder="Design name (optional)" autocomplete="off">
+    </div>
+    <select id="sload"><option value="">Load a saved design…</option></select>
+    <div class="btns">
+      <button class="primary" id="save">Save</button>
+      <button id="del">Delete</button>
+    </div>
+    <div id="smsg"></div>
+
+    <div class="sec">Export for Fusion (DXF)</div>
+    <div class="row pair">
+      <div><label>Pivot hole ⌀ ″</label><input type="number" inputmode="decimal" id="hole" value="0.375" step="0.0625" min="0.0625" max="2"></div>
+      <div><label>Link width ″</label><input type="number" inputmode="decimal" id="lwid" value="1.5" step="0.25" min="0.5" max="6"></div>
+    </div>
+    <div class="btns">
+      <button class="primary" id="expParts">Parts DXF</button>
+      <button id="expPoints">Points DXF</button>
+    </div>
+    <div id="emsg"></div>
+
+    <div class="btns" style="margin-top:18px;">
+      <button id="undo" disabled>↶ Undo</button>
+      <button class="primary" id="reset">Reset preset</button>
+    </div>
+    <div class="credit">Drag the pins to reshape it — there are no geometry sliders here.<br>
+      <a href="index.html?desktop=1">Desktop version, with sliders →</a></div>
+  </div>
+</div>
+
 <dialog id="helpdlg">
   <button id="helpclose" title="Close" aria-label="Close">×</button>
   <div id="helpbody">
@@ -245,65 +261,70 @@
     stage's coupler point, and the <b>path</b> it traces is the scale you engrave.
     Equal temperature steps land at unequal spacing — that is the whole idea.</p>
 
-    <h3>On the canvas</h3>
+    <h3>Shaping it — by hand, not by slider</h3>
+    <p>This build has <b>no geometry sliders</b>. Every length and mount position is set
+    by dragging its pin on the drawing, and the values you are changing appear at the top
+    of the screen while you drag.</p>
     <dl>
-      <dt>Drag a mount or pin</dt><dd>Reshapes the linkage. Stops Animate so you
-        aren't tuning against a moving target.</dd>
-      <dt>Right-drag / drag empty space</dt><dd>Pan the view.</dd>
-      <dt>Mouse wheel</dt><dd>Zoom. Forward zooms in, centred on the pointer.</dd>
-      <dt>Double-click</dt><dd>Recentre and reset zoom.</dd>
-      <dt>Hover a part</dt><dd>Names it and highlights the sliders that control it.</dd>
-      <dt>Space</dt><dd>Play / pause the temperature sweep.</dd>
-      <dt>Ctrl/Cmd + Z</dt><dd>Undo — drags, presets, Reset, loading a design.</dd>
+      <dt>Drag a mount or pin</dt><dd>Reshapes the linkage, and stops Animate so you
+        aren't tuning against a moving target. The four large dots are the fixed mounts;
+        the smaller ones are the moving joints.</dd>
+      <dt>Pinch</dt><dd>Zoom. This is also how you get fine control: a drag works in real
+        inches, so zoomed right in one pixel is about a hundredth of an inch.</dd>
+      <dt>One finger on empty space</dt><dd>Pan. Two fingers pan as well.</dd>
+      <dt>Double-tap</dt><dd>Recentre and reset zoom — same as the ⌖ button.</dd>
+      <dt>Tick the Dimensions box</dt><dd>Labels every link, both plates and each mount's
+        x, y, all measured from the current pose.</dd>
+    </dl>
+    <p>Need to type an exact number instead? The
+    <a href="index.html?desktop=1">desktop page</a> keeps the full slider panel.</p>
+
+    <h3>The buttons</h3>
+    <dl>
+      <dt>▶ / ⏸</dt><dd>Play or pause the temperature sweep.</dd>
+      <dt>↶</dt><dd>Undo — drags, presets, Reset, loading a design. 60 deep.</dd>
+      <dt>⌖</dt><dd>Recentre and reset zoom.</dd>
+      <dt>The grey bar</dt><dd>Tap or drag it to open and close the control sheet.</dd>
     </dl>
 
     <h3>Reading the path</h3>
     <p>A black division crosses the path every <b>1&nbsp;°F</b>, labelled every 10°.
     Where they bunch, the indicator barely moves; where they spread, it races. The
     indicator is a transparent ring so you read the divisions through it — on the real
-    piece it will be a ring with a hole.</p>
+    piece it will be a ring with a hole. Labels thin out where they would overlap; zoom
+    in and the rest reappear.</p>
 
-    <h3>The panel</h3>
+    <h3>The sheet</h3>
     <dl>
       <dt>Preset</dt><dd>Serpentine is the chosen design. Any edit switches to
         "custom"; <b>Reset preset</b> restores it and squares up the view.</dd>
-      <dt>Temperature</dt><dd>Scale min/max, the reading, <b>Animate</b> and its speed.
+      <dt>Temperature</dt><dd>Scale min/max, the reading, Animate and its speed.
         <b>Reverse scale</b> makes the retracted end hot instead of cold.</dd>
       <dt>Display</dt><dd>Ticks, inner curves (every joint's swept trace), the bounding
         box, dimensions, and view rotation in 10° steps.</dd>
       <dt>Bounding box</dt><dd>The footprint of everything — path, swept joints and all
-        four mounts — <b>at the current view angle</b>. Rotate to your mounting angle to
-        see what the piece occupies there.</dd>
-      <dt>Dimensions</dt><dd>Labels every link and triangle edge, the live actuator
-        length, and each mount's x, y. Coordinates run from a datum at the bounding
-        box's <b>lower-left corner</b>, X right and Y up, so they are all positive. The
-        Points DXF exports from that same datum.</dd>
-      <dt>Stage 1 / Stage 2</dt><dd>Link lengths, ground positions and coupler-point
-        offsets for each four-bar.</dd>
-      <dt>Actuator drive</dt><dd>Crank radius, anchor distance and angle, plus the
-        excursion — the slice of the 18″ stroke actually used.</dd>
+        four mounts — <b>at the current view angle</b>.</dd>
+      <dt>Actuator drive</dt><dd>The excursion — the slice of the 18″ stroke actually
+        used — and the two assembly-branch flips. Crank radius and anchor position are
+        set by dragging R and the anchor mount.</dd>
     </dl>
 
     <h3>Saving and exporting</h3>
-    <p>Type a name and press <b>Save</b> to keep a design in the browser; recall it from
+    <p>Type a name and press <b>Save</b> to keep a design in this browser; recall it from
     the dropdown. The page always opens on its built-in defaults — nothing is restored
     automatically.</p>
     <p><b>Parts DXF</b> writes the five links laid flat, one layer each.
-    <b>Points DXF</b> writes the path, its divisions, the labels and the mounts. Both
-    are in inches, ready for Fusion.</p>
+    <b>Points DXF</b> writes the path, its divisions, the labels and the mounts. Both are
+    in inches, ready for Fusion.</p>
 
     <h3>Before you cut</h3>
     <p>See <b>FABRICATION.md</b> and <b>TODO.md</b> in the repository — the measured
     scale behaviour and the open concerns, including mount clearance and how little
     headroom the actuator has.</p>
 
-    <p style="margin-top:14px;color:#5a6472;">Escape, the ×, or a click outside closes
-    this.</p>
+    <p style="margin-top:16px;color:#5a6472;">The × or a tap outside closes this.</p>
   </div>
 </dialog>
-<div id="toggle">☰</div>
-<div id="tip"><div class="n"></div><div class="s"></div></div>
-<div id="hint">Drag mounts &amp; joint pins to reshape · right-drag or drag empty space to pan, double-click to recenter · <b>Space</b> plays/pauses · <b>Ctrl+Z</b> undoes</div>
 
 <script>
 (function(){
@@ -313,9 +334,16 @@
   const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 
   // How much of the canvas the UI covers, so fitView can keep the drawing clear of it.
-  // Here it is the control panel down the left; mobile.html sets a bottom inset for its
-  // sheet instead. Getters, because W is not known until resize() runs.
-  const VIEWINSET={get left(){ return W>640?318:24; }, bottom:0};
+  // Portrait: the collapsed sheet along the bottom, measured rather than assumed, because
+  // the safe-area inset differs per device. Landscape: the drawer down the left instead.
+  // The fit is pinned to the COLLAPSED height on purpose — opening the sheet must not
+  // make the drawing jump while you are reaching for a control.
+  const landscape=()=>matchMedia('(orientation:landscape)').matches;
+  let peekH=168;                          // refreshed by resize() from the real element
+  const VIEWINSET={
+    get left(){ return landscape()?312:0; },
+    get bottom(){ return landscape()?0:peekH; }
+  };
 
   // ==== SHARED CORE START ====
   // Everything between these markers is byte-identical in index.html and mobile.html.
@@ -1371,31 +1399,41 @@
     }
   }
   // ==== SHARED CORE END ====
-  // Below here is this page's own interaction layer: hit radii, gestures, tooltips,
-  // resize and the debug hook. mobile.html's differs, and that is the point.
+  // Below here is this page's own interaction layer: touch gestures, the drag tooltip,
+  // the sheet, resize and the debug hook. index.html's differs, and that is the point.
 
   const tip=document.getElementById('tip');
+  const sheet=document.getElementById('sheet');
+  const grab=document.getElementById('grab');
+  const tbPlay=document.getElementById('tbPlay');
+  const tbUndo=document.getElementById('tbUndo');
+  const undoBtn=document.getElementById('undo');
+
   function hlSliders(ids){
-    document.querySelectorAll('#panel .row.hl').forEach(r=>r.classList.remove('hl'));
+    document.querySelectorAll('#sheet .row.hl').forEach(r=>r.classList.remove('hl'));
     ids.forEach(id=>{
       const el=document.getElementById(id);
       if(el&&el.parentElement&&el.parentElement.classList.contains('row'))
         el.parentElement.classList.add('hl');
     });
   }
-  function showTip(e,info){
+  // The desktop tip lists slider NAMES. This page has no geometry sliders, so it lists
+  // live VALUES instead — otherwise the numbers a drag is changing appear nowhere at all.
+  function showDragTip(name){
+    const info=COMPINFO[name==='anchor'?'anchorM':name];
+    if(!info) return;
     hlSliders(info.sliders);
     tip.querySelector('.n').textContent=info.label;
-    tip.querySelector('.s').textContent=info.note||('Sliders: '+info.sliders.map(k=>SLIDERNAMES[k]).join(' · '));
+    tip.querySelector('.s').textContent=info.sliders.length
+      ? info.sliders.map(k=>k+' '+fmtGeo(k,geo[k])).join('   ')
+      : (info.note||'');
     tip.style.display='block';
-    const tw=tip.offsetWidth, th=tip.offsetHeight;
-    tip.style.left=Math.min(e.clientX+14, window.innerWidth-tw-8)+'px';
-    tip.style.top=Math.min(e.clientY+14, window.innerHeight-th-8)+'px';
   }
-  function hideTip(){ tip.style.display='none'; hlSliders([]); hoverCompId=null; }
-  function pickPivot(sx,sy){
+  function hideTip(){ tip.style.display='none'; hlSliders([]); }
+
+  function pickPivot(sx,sy,type){
     const p=pose(cfg.temp);
-    let best=null, bd=20;
+    let best=null, bd=(type==='mouse')?20:30;   // a fingertip needs more room than a cursor
     HANDLES.forEach(n=>{
       const q=pivotPos(n,p); if(!q) return;
       const s=TX(q);
@@ -1404,94 +1442,151 @@
     });
     return best;
   }
-  canvas.addEventListener('contextmenu',e=>e.preventDefault());   // right-drag pans instead
-  canvas.addEventListener('pointerdown',e=>{
-    const w=worldOf(e);
-    dragPivot=(e.button===0)?pickPivot(w.sx,w.sy):null;            // touch reports button 0
-    hideTip();
-    if(dragPivot){
-      cfg.demo=false;                                              // a drag always stops the cycle
-      document.getElementById('demo').checked=false;
-      dragMoved=false; lastWorld=w;
-    } else {
-      panning=true; lastScreen={x:e.clientX,y:e.clientY};          // right button, or empty space
-    }
-    canvas.setPointerCapture(e.pointerId); e.preventDefault();
-  });
-  canvas.addEventListener('pointerleave',hideTip);
-  canvas.addEventListener('dblclick',()=>{ pan.x=pan.y=0; zoom=1; });   // recenter + reset zoom
-  // wheel zoom, anchored on the cursor: the point under the pointer stays put.
-  // Wheel FORWARD (negative deltaY) zooms IN.
-  canvas.addEventListener('wheel',e=>{
-    e.preventDefault();
-    const r=canvas.getBoundingClientRect();
-    const sx=e.clientX-r.left, sy=e.clientY-r.top;
+  // Anchored zoom, shared by pinch and wheel: whatever is under the anchor point stays
+  // under it. Same maths index.html uses for the wheel, factored out so the two agree.
+  function zoomAt(sx,sy,f){
     const S0=scale();
-    const qx=(sx-view.ox-pan.x)/S0, qy=(sy-view.oy-pan.y)/S0;   // rotated-world under cursor
-    zoom=clamp(zoom*Math.exp(-e.deltaY*0.0015), 0.15, 12);
+    const qx=(sx-view.ox-pan.x)/S0, qy=(sy-view.oy-pan.y)/S0;
+    zoom=clamp(zoom*f,0.15,12);
     const S1=scale();
     pan.x=sx-qx*S1-view.ox; pan.y=sy-qy*S1-view.oy;
     clampPan();
-  },{passive:false});
-  // spacebar toggles auto-cycle — always, except while typing in a text/number field
-  function syncDemoPhase(){
-    // resume the cycle from the CURRENT temperature so toggling never jumps
-    const f=clamp((cfg.temp-cfg.tmin)/(cfg.tmax-cfg.tmin),0,1);
-    demoT=Math.acos(1-2*f)/(2*Math.PI);
   }
-  window.addEventListener('keydown',e=>{
-    // help is modal: don't let Space or Ctrl+Z reach the sim behind it. helpdlg is a
-    // const declared further down, but this only ever runs after init, so it's bound.
-    if(helpdlg.open) return;
-    const fld=document.activeElement;
-    const typing=fld && fld.tagName==='INPUT' && /text|number/.test(fld.type);
-    if(e.code==='KeyZ' && (e.ctrlKey||e.metaKey)){
-      if(typing) return;                // let the text field do its own undo
-      e.preventDefault(); undo(); return;
-    }
-    if(e.code!=='Space') return;
-    if(typing) return;
-    e.preventDefault();                 // stops focused buttons/checkboxes from re-firing
-    cfg.demo=!cfg.demo;
-    if(cfg.demo) syncDemoPhase();
-    document.getElementById('demo').checked=cfg.demo;
-  });
-  document.getElementById('demo').addEventListener('change',e=>{
-    if(e.target.checked) syncDemoPhase();
-  });
-  canvas.addEventListener('pointermove',e=>{
-    if(panning){
-      // clamped so the mechanism can never be pushed entirely off-screen
-      pan.x+=e.clientX-lastScreen.x; pan.y+=e.clientY-lastScreen.y; clampPan();
-      lastScreen={x:e.clientX,y:e.clientY};
-      canvas.style.cursor='grabbing';
-      e.preventDefault();
-      return;
-    }
-    const w=worldOf(e);
-    if(!dragPivot){
-      const comp=hitComp(w.sx,w.sy);
-      hoverCompId=comp?comp.id:null;
-      hoverPivot=comp ? (comp.id==='anchorM'?'anchor':(HANDLES.includes(comp.id)?comp.id:null)) : null;
-      canvas.style.cursor=hoverPivot?'grab':(comp?'pointer':'default');
-      if(comp) showTip(e,COMPINFO[comp.id]); else hideTip();
-      return;
-    }
-    canvas.style.cursor='grabbing';
-    if(!dragMoved){ dragMoved=true; pushUndo(); }   // snapshot once per drag, before it changes geo
-    applyDrag(dragPivot,w);
-    rebuildPath();                     // view refit is suppressed during the drag
-    e.preventDefault();
-  });
-  function endDrag(){
-    if(dragPivot){ dragPivot=null; rebuildPath(); }   // refit view once on release
-    panning=false;
-    canvas.style.cursor='default';
+  function screenOf(e){
+    const r=canvas.getBoundingClientRect();
+    return {x:e.clientX-r.left, y:e.clientY-r.top};
   }
-  canvas.addEventListener('pointerup',endDrag);
-  canvas.addEventListener('pointercancel',endDrag);
+  function stopDemo(){
+    cfg.demo=false;
+    document.getElementById('demo').checked=false;
+  }
 
-  // small debug/testing hook
+  // ---------- gestures ----------
+  // Multi-touch bookkeeping: index.html tracks a single pointer, which is enough for a
+  // mouse. Here a second finger has to outrank whatever the first one was doing.
+  const pts=new Map();
+  let pinch=null, moved=0, tapT=0, tapX=0, tapY=0;
+
+  canvas.addEventListener('contextmenu',e=>e.preventDefault());
+
+  canvas.addEventListener('pointerdown',e=>{
+    canvas.setPointerCapture(e.pointerId);
+    pts.set(e.pointerId, screenOf(e));
+    e.preventDefault();
+    if(pts.size===2){
+      // a pinch outranks a drag or a pan; abandon whichever was running
+      if(dragPivot){ dragPivot=null; hideTip(); }
+      panning=false;
+      const [a,b]=[...pts.values()];
+      pinch={d:Math.hypot(a.x-b.x,a.y-b.y), m:{x:(a.x+b.x)/2,y:(a.y+b.y)/2}};
+      return;
+    }
+    if(pts.size>2) return;
+    moved=0;
+    const s=screenOf(e);
+    dragPivot=pickPivot(s.x,s.y,e.pointerType);
+    if(dragPivot){
+      stopDemo();                        // a drag always stops the sweep
+      dragMoved=false; lastWorld=worldOf(e);
+      showDragTip(dragPivot);
+    } else {
+      panning=true; lastScreen={x:e.clientX,y:e.clientY};
+    }
+  });
+
+  canvas.addEventListener('pointermove',e=>{
+    if(!pts.has(e.pointerId)) return;
+    pts.set(e.pointerId, screenOf(e));
+    e.preventDefault();
+    if(pinch && pts.size>=2){
+      const [a,b]=[...pts.values()];
+      const d=Math.hypot(a.x-b.x,a.y-b.y), m={x:(a.x+b.x)/2,y:(a.y+b.y)/2};
+      if(pinch.d>1) zoomAt(m.x,m.y,d/pinch.d);
+      pan.x+=m.x-pinch.m.x; pan.y+=m.y-pinch.m.y; clampPan();   // two-finger pan
+      pinch={d,m};
+      moved=99;
+      return;
+    }
+    if(panning){
+      const dx=e.clientX-lastScreen.x, dy=e.clientY-lastScreen.y;
+      moved+=Math.hypot(dx,dy);
+      pan.x+=dx; pan.y+=dy; clampPan();
+      lastScreen={x:e.clientX,y:e.clientY};
+      return;
+    }
+    if(!dragPivot) return;
+    moved=99;
+    const w=worldOf(e);
+    if(!dragMoved){ dragMoved=true; pushUndo(); }   // snapshot once per drag
+    applyDrag(dragPivot,w);
+    showDragTip(dragPivot);              // the values tick over as you move
+    rebuildPath();                       // view refit is suppressed during the drag
+  });
+
+  function endPointer(e){
+    pts.delete(e.pointerId);
+    if(pts.size<2) pinch=null;
+    if(pts.size) return;
+    if(dragPivot){ dragPivot=null; hideTip(); rebuildPath(); }   // release refits the view
+    panning=false;
+    // double-tap recentres. Two clean taps, close in time and place — a tap that panned
+    // or dragged does not count, or every release would arm one.
+    if(moved<12){
+      const now=performance.now();
+      if(now-tapT<320 && Math.hypot(e.clientX-tapX,e.clientY-tapY)<40){
+        pan.x=pan.y=0; zoom=1; tapT=0;
+      } else { tapT=now; tapX=e.clientX; tapY=e.clientY; }
+    }
+    moved=0;
+  }
+  canvas.addEventListener('pointerup',endPointer);
+  canvas.addEventListener('pointercancel',endPointer);
+
+  // kept for tablets with a trackpad or mouse — free, given zoomAt already exists
+  canvas.addEventListener('wheel',e=>{
+    e.preventDefault();
+    const s=screenOf(e);
+    zoomAt(s.x,s.y,Math.exp(-e.deltaY*0.0015));
+  },{passive:false});
+
+  // ---------- toolbar ----------
+  document.getElementById('tbFit').addEventListener('click',()=>{ pan.x=pan.y=0; zoom=1; });
+  tbUndo.addEventListener('click',()=>undo());
+  tbPlay.addEventListener('click',()=>{
+    cfg.demo=!cfg.demo;
+    const box=document.getElementById('demo');
+    box.checked=cfg.demo;
+    box.dispatchEvent(new Event('change'));    // lets the core resync the sweep phase
+  });
+  // cfg.demo and the undo stack are flipped from a dozen places — a one-line tick is
+  // cheaper than making every one of them announce itself.
+  (function tick(){
+    tbPlay.textContent=cfg.demo?'⏸':'▶';
+    tbUndo.disabled=undoBtn.disabled;
+    requestAnimationFrame(tick);
+  })();
+
+  // ---------- sheet ----------
+  function setSheet(open){
+    sheet.classList.toggle('open',open);
+    sheet.classList.toggle('peek',!open);
+  }
+  let gy0=null, gOpen=false;
+  grab.addEventListener('pointerdown',e=>{
+    grab.setPointerCapture(e.pointerId);
+    gy0=e.clientY; gOpen=sheet.classList.contains('open');
+  });
+  grab.addEventListener('pointerup',e=>{
+    if(gy0===null) return;
+    const dy=e.clientY-gy0;
+    gy0=null;
+    if(Math.abs(dy)<8) setSheet(!gOpen);        // a tap toggles
+    else setSheet(dy<0);                        // a drag snaps the way it was heading
+  });
+  grab.addEventListener('keydown',e=>{
+    if(e.key===' '||e.key==='Enter'){ e.preventDefault(); setSheet(!sheet.classList.contains('open')); }
+  });
+  // ---------- debug/testing hook ----------
   window.__ct={
     pivotScreen:n=>{const p=pose(cfg.temp); return TX(pivotPos(n,p));},
     geo, cfg, buildParts, buildPoints, pan, pose, rebuild:()=>{syncUI();rebuildPath();},
@@ -1500,10 +1595,15 @@
     get bbox(){ return bbox; },
     get zoom(){ return zoom; }, rotPt,
     screen:TX, dir:rotDir,             // world -> screen, for tests that check layout
+    pick:pickPivot,                    // so a test can assert the touch hit radius directly
     undoDepth:()=>undoStack.length,
     get pathJ(){ return pathJ; },      // rebuildPath reassigns it, so read it live
+    get peek(){ return peekH; },       // mobile-only: what fitView keeps clear
+    get sheetOpen(){ return sheet.classList.contains('open'); },
+    setSheet,
     dump:()=>JSON.stringify({geo,cfg},null,1)
   };
+
   document.getElementById('preset').addEventListener('change',e=>{
     const v=e.target.value;
     if(PRESETS[v]){ pushUndo(); Object.assign(geo,PRESETS[v]); syncSliders(); rebuildPath(); }
@@ -1513,27 +1613,42 @@
     const src=PRESETS[v]||PRESETS.serpentine;
     pushUndo(); Object.assign(geo,src);
     cfg.rot=0;                         // Reset squares the view back up as well
-    syncUI(); rebuildPath();           // syncUI, not syncSliders: the rot slider moved too
+    syncUI(); rebuildPath();
   });
-  // help dialog. <dialog>.showModal() gives Escape-to-close and a backdrop for free;
-  // a click that lands on the dialog element itself IS the backdrop, so that closes too.
+  // help dialog. <dialog>.showModal() gives a backdrop for free; a click that lands on
+  // the dialog element itself IS the backdrop, so that closes too. There is an × because
+  // a phone has no Escape key.
   const helpdlg=document.getElementById('helpdlg');
   document.getElementById('help').addEventListener('click',()=>helpdlg.showModal());
   document.getElementById('helpclose').addEventListener('click',()=>helpdlg.close());
   helpdlg.addEventListener('click',e=>{ if(e.target===helpdlg) helpdlg.close(); });
 
-  const panel=document.getElementById('panel');
-  document.getElementById('hide').addEventListener('click',()=>panel.classList.add('collapsed'));
-  document.getElementById('toggle').addEventListener('click',()=>panel.classList.remove('collapsed'));
-
+  // ---------- resize ----------
+  // The mobile URL bar fires resize continuously while the page scrolls, so coalesce to
+  // one rebuild per frame. ponytail: rAF is enough; rebuildPath is ~140 poses.
+  let pending=false;
   function resize(){
     W=window.innerWidth; H=window.innerHeight; DPR=Math.min(window.devicePixelRatio||1,2);
     canvas.width=W*DPR; canvas.height=H*DPR;
     canvas.style.width=W+'px'; canvas.style.height=H+'px';
     ctx.setTransform(DPR,0,0,DPR,0,0);
+    // measure the collapsed sheet rather than trusting the CSS constant: the safe-area
+    // inset is device-specific, and getting this wrong hides the bottom of the path.
+    const wasOpen=sheet.classList.contains('open');
+    if(wasOpen) setSheet(false);
+    peekH=sheet.offsetHeight;
+    if(wasOpen) setSheet(true);
     rebuildPath();
   }
-  window.addEventListener('resize',resize);
+  function queueResize(){
+    if(pending) return;
+    pending=true;
+    requestAnimationFrame(()=>{ pending=false; resize(); });
+  }
+  window.addEventListener('resize',queueResize);
+  window.addEventListener('orientationchange',queueResize);
+  if(window.visualViewport) window.visualViewport.addEventListener('resize',queueResize);
+
   syncSliders();
   refreshSaveList();
   resize();

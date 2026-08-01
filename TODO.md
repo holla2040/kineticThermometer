@@ -28,13 +28,30 @@ architecture in [CLAUDE.md](CLAUDE.md).
 
 - [ ] `.linkage2` export — the chosen geometry as XML for David Rector's
       Linkage program (Windows, blog.rectorsquid.com). Not started.
-- [ ] Auto-thin the °F labels where the scale crowds them. At the cold end
-      −20..10 the labels nearly touch; at the hot end they are far apart.
 - [ ] `PATHW = 1.0″` (engraved path width, used for the DXF division length)
       is hardcoded in `buildPoints()`. Expose it as a field if it needs tuning
       against real stock.
 - [ ] The README GIF predates the bounding box and the current geometry.
       Regenerating costs another ~4.6 MB in git history, so it was left alone.
+
+## Mobile (mobile.html, added 2026-07-31)
+
+- [ ] **Only 6 of the 14 °F labels survive on a phone at 1×.** The thinning
+      rule is honest — they genuinely overlap at that scale, and pinching in
+      brings the rest back — but the owner has not seen it on real hardware
+      yet. If it reads as too sparse, `LBLGAP` in `drawScale` is the knob.
+- [ ] **Joint pins sit ~10px apart at the default zoom.** A fingertip covers
+      several; nearest-wins picks one, and pinching to ~12× spreads them to
+      ~126px. The help says so and `verify_mobile.py` asserts it. Worth
+      confirming this is workable in the hand before calling it settled — the
+      alternative would be a "zoom to a joint" affordance, which is more UI.
+- [ ] Fine numeric entry on a phone is pinch-and-drag only. `?desktop=1`
+      reaches the full slider panel on the same device; if that turns out to
+      be the thing actually reached for, a numeric-entry sheet for the
+      selected handle is the smallest fix.
+- [ ] Untested on real iOS/Android hardware — everything so far is headless
+      Chromium at a 390×844 phone viewport. The `dvh`, safe-area and
+      focus-zoom work is exactly the kind that only fails on the real device.
 
 ## Design decisions to re-confirm
 
@@ -62,3 +79,10 @@ CLAUDE.md; listed here so they do not get "fixed" again.
 - Auto-restoring settings from localStorage on load — removed. The page always
   opens on the defaults in `index.html`; saved designs are opt-in only.
 - The mount-to-mount crossing rule — dropped by the owner.
+- A responsive `index.html` for mobile — the owner chose a separate
+  `mobile.html` instead, with `tools/sync_core.py` holding the shared half
+  identical. Don't merge them back without asking.
+- Geometry sliders on `mobile.html` — deliberately removed ("rely more on
+  user dragging"). All 16 are set by dragging their pin. `?desktop=1` is the
+  escape hatch, and `verify_mobile.py` asserts the exact id-set difference,
+  so adding one back will fail the suite on purpose.

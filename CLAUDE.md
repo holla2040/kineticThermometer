@@ -12,8 +12,10 @@ sculpture IS that coupler curve, with tick marks at equal temperature steps
 of the "how does it work?" fascination for viewers).
 
 `index.html` is the interactive design simulator (single self-contained
-file, no dependencies, open in any browser). `ik-demo.html` is an earlier
-unrelated FABRIK inverse-kinematics demo kept for reference.
+file, no dependencies, open in any browser). `mobile.html` is the same tool
+laid out for a phone in portrait — see "Two pages, one shared core" below.
+`ik-demo.html` is an earlier unrelated FABRIK inverse-kinematics demo kept
+for reference.
 
 ## Hardware constraints (fixed, from the owner)
 
@@ -106,6 +108,85 @@ flow plus both DXF exports (`python3 tools/verify_export.py [outdir]`).
    Deliberate decision: invalid parts simply aren't drawn (owner chose this
    over a failure-visualization overlay — "leave it").
 
+## Two pages, one shared core (added 2026-07-31)
+
+The owner asked for a mobile version and chose a **separate file** over a
+responsive `index.html`, with **full editing parity minus the sliders** —
+"rely more on user dragging, remove the placement and length sliders".
+
+`mobile.html` is that page. To stop a 1500-line fork from rotting, the half
+that must never differ is fenced in BOTH files:
+
+```
+// ==== SHARED CORE START ====      presets, kinematics, fitView, drawing,
+...                                 ticks, bbox, DXF, save/load, UI wiring,
+// ==== SHARED CORE END ====        undo, COMPINFO, buildComps, applyDrag
+```
+
+~1050 of each file's ~1550 lines. **Edit the physics in `index.html`, then
+run `python3 tools/sync_core.py --apply`.** `--check` (the default) fails on
+any drift and is part of verification. Anything page-specific — hit radii,
+gestures, tooltips, the sheet, resize, `__ct` — lives BELOW the END marker
+and is meant to differ.
+
+Three things had to move into the core to make this work, and they matter:
+
+- **`VIEWINSET`** replaced `fitView`'s hardcoded `leftEdge=(W>640)?318:24`.
+  Each page declares in its prelude how much canvas its UI covers: desktop
+  `{left:318|24, bottom:0}`, mobile `{left:0, bottom:peekH}` in portrait and
+  `{left:312, bottom:0}` in landscape. `fitView` itself is now identical in
+  both. Mobile MEASURES `peekH` from the collapsed sheet in `resize()` rather
+  than trusting the CSS constant — the safe-area inset is device-specific.
+- **`applyDrag(name, w)`** — the ~50 lines of per-handle geometry mutation,
+  lifted out of the desktop's pointermove handler. Its clamps are the same
+  numbers as the desktop sliders' min/max, and **on mobile they are the only
+  thing bounding the geometry**, since the sliders are gone. Keep them in step.
+- **The geometry-slider wiring is null-guarded.** `syncSliders` and the
+  `GEOKEYS.forEach` binding loop both `return` on a missing element, so the
+  same core runs in a page with no sliders. `updGeoUI` already did.
+
+### What mobile.html does differently
+
+- **No geometry sliders** — all 16 (`L2 L3 L4 gx gy cu cv L5 L6 ox oy cu2
+  cv2 rA dA anch`) are gone; the 10 canvas handles set them. Kept: excursion
+  min/max, both stage flips, rotation, temperature range, display toggles,
+  presets, saves and both DXF exports. `verify_mobile.py` asserts the id-set
+  difference against index.html EXACTLY, so a forgotten control and an
+  over-eager deletion both fail.
+- **Bottom sheet** (`#sheet`, `.peek` ~168px / `.open` 72dvh) instead of the
+  left panel; tap or drag the grab pill. The fit is pinned to the COLLAPSED
+  height on purpose — opening must not make the drawing jump. In landscape a
+  media query turns it into a 300px left drawer.
+- **`touch-action` sits on the canvas, not on `html,body`.** index.html's
+  body-level `touch-action:none` is exactly what makes a scrolling panel
+  impossible on a phone; the sheet body is `pan-y` with `overscroll-behavior:
+  contain`.
+- **Gestures**: a `Map` of live pointers. Two fingers = pinch + two-finger
+  pan, anchored on the midpoint, and it outranks any in-flight drag. Double
+  tap (<320ms, <40px, and only if the release didn't move) recentres.
+  `zoomAt(sx,sy,f)` is shared by pinch and wheel.
+- **Hit radius 30px for a non-mouse pointer**, 20 for a mouse. Note the real
+  constraint: at 1× the whole 40″ piece is ~270px wide, so the joint pins sit
+  **~10px apart** and a fingertip covers several. Nearest-wins picks
+  something sensible, but picking a SPECIFIC joint means pinching in first —
+  at 12× they are ~126px apart. The help text says so and the test asserts it.
+  This is geometry, not a bug to fix.
+- **The drag tooltip carries VALUES, not slider names** — `gx 9.7″  gy −3.4″`,
+  pinned to the top of the canvas because your finger is on the part. It
+  reuses `COMPINFO[id].sliders` as a parameter list through `fmtGeo`. With the
+  sliders gone this is the only place those numbers appear live.
+- **Floating toolbar** ▶/⏸ ↶ ⌖ replaces Space and Ctrl+Z. Its glyph and
+  disabled state are refreshed in a one-line rAF tick — `cfg.demo` and the
+  undo stack are flipped from a dozen places and making each one announce
+  itself would be more code, not less.
+- **All typed controls are ≥16px**, or iOS zooms the page on focus. Tap
+  targets ≥44px. `100dvh`, `env(safe-area-inset-*)`, `viewport-fit=cover`.
+- **resize** is rAF-debounced and also bound to `orientationchange` and
+  `visualViewport.resize` — the mobile URL bar fires `resize` continuously.
+- `index.html` redirects a narrow touch screen here (3 lines in `<head>`);
+  **`?desktop=1` escapes it**, and that is the documented way to get the
+  sliders back on a phone.
+
 ## UI features already built (don't regress these)
 
 - Presets dropdown (serpentine / grandarc / custom), Reset preset.
@@ -172,6 +253,17 @@ flow plus both DXF exports (`python3 tools/verify_export.py [outdir]`).
   path climbs and vanished entirely where it descends — none at all between
   60 and 80°F. Both the shadow and that mechanism are gone. Divisions are
   explicit now; do not reintroduce a drop shadow.
+- **Labels thin where they crowd** (added 2026-07-31, closing a TODO item).
+  A 10° label is drawn only if it clears every label already placed by
+  `LBLGAP=34` SCREEN px — against ALL of them, not just the previous one,
+  because this path folds back and 110° comes to rest beside 60°: the two
+  printed as one blot. Measured in screen px, so **zooming in brings the
+  skipped ones back**; it is a legibility rule, not a change to the scale.
+  6 of 14 survive on a phone at 1×, 9 of 14 on a 1280px desktop, all 14 at
+  12×. **The DXF deliberately does NOT thin** — the engraving is at real
+  size where nothing crowds, and it must carry every 10° mark. That is the
+  one place screen and DXF are allowed to disagree, and the tests assert
+  both halves.
 - **No tick strokes.** tickList() still runs every 5° (major on the 10s,
   cached in tickCache) but ONLY the 10° labels are drawn, sat 14px off
   their own division. The white major/minor comb beside the path was
@@ -245,10 +337,12 @@ flow plus both DXF exports (`python3 tools/verify_export.py [outdir]`).
   Curves are line segments, not splines — fit a spline in Fusion if wanted.
 - Public view: uncheck "Show mechanism" — only the path + indicator ring.
 - Debug hook for tests: `window.__ct` = {pivotScreen(name), geo, cfg, pose,
-  pan, zoom, rotPt, rebuild(), ticks, chunks, bbox, pathJ, undoDepth(),
-  buildParts(), buildPoints(), dump()}. The builders return DXF text so tests can assert on the export
-  without a download. `dump()` returns geo+cfg as JSON — this is how the
-  owner hands over a hand-tuned design: `copy(__ct.dump())` in the console.
+  pan, zoom, rotPt, screen (=TX), dir (=rotDir), rebuild(), ticks, chunks,
+  bbox, pathJ, undoDepth(), buildParts(), buildPoints(), dump()}. mobile.html
+  adds {peek, sheetOpen, setSheet(), pick(x,y,type)}. The builders return DXF
+  text so tests can assert on the export without a download. `dump()` returns
+  geo+cfg as JSON — this is how the owner hands over a hand-tuned design:
+  `copy(__ct.dump())` in the console.
 
 ## Verification pattern used throughout
 
@@ -256,6 +350,26 @@ Headless Chromium via Playwright (`executablePath` may need adjusting per
 machine). Every feature was verified by driving the page: dispatch real
 `input`/`change` events, drag with mouse.move/down/up, reload for
 persistence tests, screenshot and inspect. Keep doing this for changes.
+
+**After any change, run all three:**
+
+```
+python3 tools/verify_export.py     # index.html, 601 lines of checks
+python3 tools/sync_core.py         # the two pages' cores are identical
+python3 tools/verify_mobile.py     # mobile.html on a 390x844 phone viewport
+```
+
+`tools/dxf.py` holds the shared DXF reader — its own module because
+`verify_export.py` runs its whole suite at import time.
+
+Two things `verify_mobile.py` has to do that the desktop one does not, both
+worth knowing before you edit it:
+
+- Playwright's touchscreen API taps only; it cannot express a pinch or tag a
+  drag with a `pointerType`. It dispatches raw `PointerEvent`s instead.
+- Those carry pointer ids that are not real active pointers, so
+  `setPointerCapture` throws `NotFoundError`. `ready(pg)` stubs it out after
+  every load — call it after every `reload()`, along with stopping the sweep.
 
 ## Known open items / next steps
 

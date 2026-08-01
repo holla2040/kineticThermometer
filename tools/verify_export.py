@@ -15,26 +15,11 @@ import math, os, sys, tempfile
 from playwright.sync_api import sync_playwright
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from dxf import parse_dxf                     # shared with verify_mobile.py
+
 PAGE = "file://" + os.path.join(HERE, "index.html")
 OUT = sys.argv[1] if len(sys.argv) > 1 else tempfile.gettempdir()
-
-def parse_dxf(txt):
-    """Minimal DXF group-code reader -> list of entities in ENTITIES section."""
-    lines = txt.split("\r\n")
-    assert lines[-1] == "", "file must end with a line terminator"
-    pairs = [(int(lines[i]), lines[i+1]) for i in range(0, len(lines)-1, 2)]
-    ents, cur, inent = [], None, False
-    for code, val in pairs:
-        if code == 2 and val == "ENTITIES":
-            inent = True; continue
-        if not inent: continue
-        if code == 0:
-            if cur: ents.append(cur)
-            if val in ("ENDSEC", "EOF"): cur = None; inent = False; continue
-            cur = {"type": val}
-        elif cur is not None:
-            cur.setdefault(code, []).append(val)
-    return ents
 
 with sync_playwright() as p:
     b = p.chromium.launch()
