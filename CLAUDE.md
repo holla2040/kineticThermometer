@@ -153,14 +153,30 @@ Three things had to move into the core to make this work, and they matter:
   presets, saves and both DXF exports. `verify_mobile.py` asserts the id-set
   difference against index.html EXACTLY, so a forgotten control and an
   over-eager deletion both fail.
-- **Bottom sheet** (`#sheet`, `.peek` ~168px / `.open` 72dvh) instead of the
+- **Bottom sheet** (`#sheet`, `.peek` 44px / `.open` 72dvh) instead of the
   left panel; tap or drag the grab pill. The fit is pinned to the COLLAPSED
   height on purpose — opening must not make the drawing jump. In landscape a
   media query turns it into a 300px left drawer.
+  Collapsed it shows **only the pill**: `.peek` drops the background, border
+  and shadow, so the 44px strip is still there to be thumbed but nothing is
+  painted over the drawing. The owner asked for this after seeing a 168px
+  peek that carried the readout tiles and the reading slider — the numeric
+  °F now lives behind the pill, and the ring on the path is what you read at
+  a glance. Don't put the tiles back without asking.
 - **`touch-action` sits on the canvas, not on `html,body`.** index.html's
   body-level `touch-action:none` is exactly what makes a scrolling panel
   impossible on a phone; the sheet body is `pan-y` with `overscroll-behavior:
   contain`.
+- **Every range input is `touch-action:pan-y` as well**, and that one rule is
+  load-bearing. A slider spans the full width of the sheet and claims the
+  touch the moment a gesture starts on it, so scrolling the sheet dragged
+  whichever slider the thumb crossed. `pan-y` hands vertical movement back to
+  the scroller and leaves the slider only the horizontal — the one direction
+  that ever meant to move it. It must sit on the input; `#sheetbody`'s own
+  `pan-y` does not reach it. The test asserts the computed value on all three,
+  because touch-action is enforced by the compositor and synthetic pointer
+  events bypass it — the mechanism is what can be checked, and the mechanism
+  is the fix.
 - **Gestures**: a `Map` of live pointers. Two fingers = pinch + two-finger
   pan, anchored on the midpoint, and it outranks any in-flight drag. Double
   tap (<320ms, <40px, and only if the release didn't move) recentres.
@@ -175,10 +191,38 @@ Three things had to move into the core to make this work, and they matter:
   pinned to the top of the canvas because your finger is on the part. It
   reuses `COMPINFO[id].sliders` as a parameter list through `fmtGeo`. With the
   sliders gone this is the only place those numbers appear live.
-- **Floating toolbar** ▶/⏸ ↶ ⌖ replaces Space and Ctrl+Z. Its glyph and
-  disabled state are refreshed in a one-line rAF tick — `cfg.demo` and the
-  undo stack are flipped from a dozen places and making each one announce
-  itself would be more code, not less.
+- **Floating toolbar: ONE ROW across the top** — `?` at the far left (pushed
+  there by `margin-right:auto`), then `▶/⏸ ↶ ⟲ ⌖` at the right. Settled by the
+  owner on 2026-08-01, after a right-hand column and a help button inside the
+  sheet were both tried and rejected. Things that are load-bearing here:
+  - `?` sits apart from the action group on purpose, so reaching for help can
+    never be a mis-tap on Reset. It must stay at the LEFT end.
+  - `↶` and `⟲` are adjacent and read alike at 19px, and one of them wipes
+    everything — so `⟲` is tinted `--warn`. The glyphs alone are not enough.
+  - Undo belongs next to Reset precisely *because* Reset is the destructive
+    one. It was briefly moved out of the toolbar and the owner asked for it
+    back.
+  - The drag tooltip moved BELOW the row (`top:64px`), since the row now spans
+    the full width and there is no space left at either end. In landscape both
+    the row and the tip start clear of the drawer at 324px.
+  - The play glyph and undo's disabled state are refreshed in a two-line rAF
+    tick — `cfg.demo` and the undo stack are changed from half a dozen places
+    and making each one announce itself would be more code, not less.
+- **A drag does not pause the sweep — it winds it up to 1×**, `DRAGSPEED`
+  (owner's call, 2026-08-01: "users can see the full excursion of their
+  change"; 2× was tried first and read as too fast). `frame()`
+  reads `speedOverride||cfg.speed`, and `cfg.speed` is never written, so the
+  slider keeps the user's value and release just clears the override. Every
+  exit from a drag goes through `endPointer`, which clears it unconditionally
+  — a boost left switched on would be permanent. Consequence worth knowing:
+  the four ground mounts hold still while animating, so dragging those is
+  exactly the intended experience, but R, B, C, P, D and Q ride the mechanism
+  and move under your finger. Pause with ⏸ to pin one down.
+- **A tap does not pause either.** index.html stops the sweep on pointerdown;
+  here the touch radius is 30px over pins ~10px apart, so almost any tap in
+  the middle of the drawing lands on a handle and would silently stop
+  playback. The boost waits for real movement (`dragMoved`), so a stray tap
+  costs nothing — same gate that arms undo.
 - **All typed controls are ≥16px**, or iOS zooms the page on focus. Tap
   targets ≥44px. `100dvh`, `env(safe-area-inset-*)`, `viewport-fit=cover`.
 - **resize** is rAF-debounced and also bound to `orientationchange` and
@@ -201,14 +245,22 @@ Three things had to move into the core to make this work, and they matter:
   switches preset to "custom". Grabbing a handle also switches auto-cycle
   off — you can't tune against a moving target.
 - **Undo** (button + Ctrl/Cmd+Z, 60 deep) for wholesale geo changes: drags,
-  preset switches, Reset, loading a saved design. Snapshots geo plus UNDOCFG
-  (`tmin/tmax/extMin/extMax/rot`) — the range and excursion reshape the
-  curve, and Reset zeroes the rotation, so without them undo left the view
-  changed. Deliberately NOT the playback toggles: a drag turns auto-cycle
-  off and undo must not turn it back on. A drag snapshots once, on
-  first movement, so a grab-and-release pushes nothing. The preset label is
-  re-derived from the restored geometry (presetOf) rather than snapshotted —
-  the dropdown has already moved by the time its change event fires.
+  preset switches, Reset, loading a saved design. Snapshots geo plus UNDOCFG,
+  which is now **all of `cfg` except `temp` and `demo`** — widened on
+  2026-08-01 when Reset became a full reset, so that one undo puts every
+  setting back. The two exclusions are the point: a drag must not have its
+  playback state restored under it. A drag snapshots once, on first movement,
+  so a grab-and-release pushes nothing. The preset label is re-derived from
+  the restored geometry (presetOf) rather than snapshotted — the dropdown has
+  already moved by the time its change event fires.
+- **Reset (`resetAll`, shared core) = the page as it first opened**: geometry
+  back to the selected preset, every `cfg` value back to `CFGDEFAULTS`, and
+  the view squared up — rotation, zoom AND pan. Both pages use it, so the
+  button means the same thing in both. It used to restore geometry and zero
+  the rotation; it now returns rotation to the 110° default like every other
+  setting, because "reset" means the page as it opened, not "square up the
+  view". Pan and zoom are not undoable, but they never were — transient
+  nudges, not part of the design.
 - **Zoom**: mouse wheel, cursor-anchored — the point under the pointer stays
   put. Wheel FORWARD zooms IN. `zoom` multiplies the fitted scale via
   `scale()`; fitView centres using `scale()` too, or a refit would jump the
@@ -233,7 +285,8 @@ Three things had to move into the core to make this work, and they matter:
     rotated bounds (for the fit).
   - worldOf() inverts the rotation, or a grabbed pivot drifts off the
     cursor. Verify this MID-drag: releasing refits the view and hides it.
-  Reset preset zeroes the rotation (and so calls syncUI, not syncSliders).
+  Reset restores the DEFAULT rotation (110°), not zero — see resetAll above —
+  and so calls syncUI, not syncSliders.
   Rotation never alters a real dimension. The bounding box footprint DOES
   change with it, but that is a different measurement, not the piece changing.
 - Hover: component highlight + tooltip naming the part + its sliders, and
@@ -282,9 +335,10 @@ Three things had to move into the core to make this work, and they matter:
   viewer counts the marks the ring is sitting on. The real sculpture's
   indicator will be a ring with a hole for exactly this reason. It no
   longer carries the temperature colour; the path underneath does.
-- "Inner curves" checkbox traces every moving joint (R, B, C, P, D) as
-  dashed paths — R is the actuator rod end.
-- **Bounding box** ("Bounding box" checkbox, `cfg.showBox`, default on): a
+- **"Inner curves"** (`cfg.ghost`, **default ON** since 2026-08-01 at the
+  owner's request) traces every moving joint (R, B, C, P, D) as dashed
+  paths — R is the actuator rod end.
+- **Bounding box** ("Bounding box" checkbox, `cfg.showBox`, default off): a
   dashed rectangle round the whole design labelled with its overall size in
   inches — 40.7″ × 30.8″ square-on for the current serpentine. A sense of the
   real scale of the piece. Two things to preserve:

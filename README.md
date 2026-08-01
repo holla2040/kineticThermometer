@@ -1,6 +1,7 @@
 # Kinetic Thermometer
 
-**[Live demo →](https://holla2040.github.io/kineticThermometer/)**
+**[Live demo →](https://holla2040.github.io/kineticThermometer/)** ·
+**[Phone version →](https://holla2040.github.io/kineticThermometer/mobile.html)**
 
 An outdoor garden sculpture that displays temperature: a linear actuator
 (24″ retracted / 42″ extended, 18″ stroke) drives a bell crank into two
@@ -29,10 +30,13 @@ where it opens out. That unevenness is the mechanism, not the recording.
   bounding box gives the piece's footprint in inches at the current view
   angle. Double-click recentres and resets zoom. Exports DXF for Fusion —
   see below.
-- `mobile.html` — the same simulator, portrait-first for a phone. A narrow
+- `mobile.html` — the same simulator, portrait-first for a phone, served at
+  <https://holla2040.github.io/kineticThermometer/mobile.html>. A narrow
   touch screen opening the live demo lands here automatically; add
-  `?desktop=1` to force the desktop page instead. The controls live in a
-  bottom sheet you drag open, and **there are no geometry sliders**: every
+  `?desktop=1` to force the desktop page instead. The controls hide behind
+  the pill at the bottom of the screen — tap or drag it to bring the sheet
+  up, and collapsed it gives the whole screen to the drawing. **There are no
+  geometry sliders**: every
   length and mount position is set by dragging its pin, with the values you
   are changing shown at the top of the screen. Pinch to zoom (also how you
   get fine control — at 12× a pixel is about a hundredth of an inch),

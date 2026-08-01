@@ -9,7 +9,9 @@
     --bg:#10141b; --panel:#161b24; --border:#28303d; --text:#e8edf3; --muted:#8a94a6;
     --accent:#f6a833; --accent2:#4fd1c5; --brass:#d9a441; --steel:#9fb0c3;
     --warn:#f2c14e; --bad:#ef5350;
-    --peek:168px;                       /* collapsed sheet height, without the safe area */
+    /* Collapsed sheet height, without the safe area. It is the grab strip and nothing
+       else — 44px so a thumb can find it, while only the 5px pill inside is painted. */
+    --peek:44px;
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
   html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
@@ -27,11 +29,19 @@
     box-shadow:0 -8px 34px rgba(0,0,0,.5);
     padding-bottom:env(safe-area-inset-bottom);
     transition:height .22s ease;}
-  #sheet.peek{height:calc(var(--peek) + env(safe-area-inset-bottom));}
+  /* Collapsed, the sheet drops ALL its chrome — no panel fill, no border, no shadow —
+     so what is left on screen is the pill alone floating over the drawing. The 44px box
+     is still there to be tapped, it just isn't painted. */
+  #sheet.peek{height:calc(var(--peek) + env(safe-area-inset-bottom));
+    background:transparent;backdrop-filter:none;border-top-color:transparent;
+    box-shadow:none;}
   #sheet.open{height:calc(72dvh + env(safe-area-inset-bottom));}
-  #grab{flex:0 0 auto;height:26px;display:flex;align-items:center;justify-content:center;
+  #grab{flex:0 0 auto;height:var(--peek);display:flex;align-items:center;justify-content:center;
     cursor:pointer;touch-action:none;}
-  #grab span{width:40px;height:5px;border-radius:3px;background:var(--border);}
+  #grab span{width:40px;height:5px;border-radius:3px;background:var(--border);
+    transition:background .2s;}
+  /* over bare canvas the pill needs to carry itself */
+  #sheet.peek #grab span{background:rgba(232,237,243,.5);box-shadow:0 1px 5px rgba(0,0,0,.7);}
   #sheet.open #grab span{background:var(--accent);}
   #sheethead{flex:0 0 auto;padding:0 16px 10px;}
   #sheetbody{flex:1 1 auto;min-height:0;padding:0 16px 18px;
@@ -39,11 +49,19 @@
     touch-action:pan-y;overscroll-behavior:contain;}
 
   /* ---------- floating toolbar (there is no Space or Ctrl+Z on a phone) ---------- */
-  #tools{position:fixed;top:calc(10px + env(safe-area-inset-top));right:10px;z-index:6;
-    display:flex;flex-direction:column;gap:8px;}
-  #tools button{width:46px;height:46px;padding:0;border-radius:14px;font-size:19px;
-    background:rgba(22,27,36,.93);border:1px solid var(--border);color:var(--text);}
+  /* One row across the top. ? is first and pushes the action buttons to the far right
+     with margin-right:auto, so help stays in the upper-left corner where it belongs and
+     a mis-tap on it can never be Reset. */
+  #tools{position:fixed;top:calc(10px + env(safe-area-inset-top));left:10px;right:10px;
+    z-index:6;display:flex;flex-direction:row;gap:8px;}
+  #tools button{flex:0 0 auto;width:46px;height:46px;padding:0;border-radius:14px;
+    font-size:19px;background:rgba(22,27,36,.93);border:1px solid var(--border);
+    color:var(--text);}
   #tools button:disabled{opacity:.35;}
+  #help{margin-right:auto;font-weight:700;}
+  /* ↶ and ⟲ are adjacent and read alike at 19px, and one of them wipes everything.
+     Colour is the differentiator — the glyphs alone are not enough. */
+  #tbReset{color:var(--warn);border-color:rgba(242,193,78,.42);}
 
   /* ---------- typography and controls, sized for fingers ---------- */
   h1{font-size:15px;margin:0;letter-spacing:.3px;}
@@ -59,8 +77,15 @@
   .row{margin:12px 0;}
   .row label{display:flex;justify-content:space-between;font-size:13px;color:var(--muted);margin-bottom:7px;}
   .row label b{color:var(--text);font-variant-numeric:tabular-nums;font-weight:600;}
+  /* pan-y is the whole fix for "scrolling the sheet nudges a slider": a range input
+     claims the touch the moment one starts on it, and a slider spans the full width, so
+     a thumb travelling up the sheet lands on one every time. pan-y hands VERTICAL
+     movement back to the scroller and keeps only the horizontal — which is the only
+     direction that ever meant to move a slider. It must sit on the input itself;
+     #sheetbody's pan-y does not reach it. */
   input[type=range]{width:100%;height:6px;-webkit-appearance:none;appearance:none;
-    background:var(--border);border-radius:4px;outline:none;margin:9px 0;}
+    background:var(--border);border-radius:4px;outline:none;margin:9px 0;
+    touch-action:pan-y;}
   input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:26px;height:26px;
     border-radius:50%;background:var(--accent);border:2px solid var(--bg);}
   input[type=range]::-moz-range-thumb{width:26px;height:26px;border-radius:50%;
@@ -98,7 +123,9 @@
   .credit a{color:var(--muted);}
 
   /* ---------- drag tooltip: pinned to the top, because your finger is on the part ---------- */
-  #tip{position:fixed;top:calc(10px + env(safe-area-inset-top));left:12px;right:68px;
+  /* Below the toolbar row (10 top + 46 button + 8 gap), not beside it — the row now
+     spans the full width, so there is no room left at either end. */
+  #tip{position:fixed;top:calc(64px + env(safe-area-inset-top));left:12px;right:12px;
     z-index:7;display:none;pointer-events:none;
     background:rgba(22,27,36,.97);border:1px solid rgba(246,168,51,.55);border-radius:11px;
     padding:9px 12px;box-shadow:0 6px 22px rgba(0,0,0,.5);}
@@ -107,9 +134,6 @@
     font-variant-numeric:tabular-nums;}
 
   /* ---------- help ---------- */
-  #help{flex:0 0 auto;width:30px;height:30px;padding:0;border-radius:50%;
-    background:#10151d;border:1px solid var(--border);color:var(--muted);
-    font-size:14px;font-weight:700;line-height:1;}
   #helpdlg{max-width:560px;width:calc(100vw - 24px);max-height:calc(100dvh - 40px);
     background:var(--panel);color:var(--text);border:1px solid var(--border);
     border-radius:15px;padding:0;box-shadow:0 18px 60px rgba(0,0,0,.6);overflow:hidden;}
@@ -137,7 +161,9 @@
       padding-bottom:0;}
     #grab{display:none;}
     #sheethead{padding-top:14px;}
-    #tip{left:auto;right:68px;width:280px;}
+    /* the drawer owns the left edge, so the row and the tip start clear of it */
+    #tools{left:324px;}
+    #tip{left:324px;right:12px;}
   }
 </style>
 </head>
@@ -145,8 +171,10 @@
 <canvas id="c"></canvas>
 
 <div id="tools">
+  <button id="help" title="Help" aria-label="Help">?</button>
   <button id="tbPlay" title="Play / pause" aria-label="Play or pause">▶</button>
   <button id="tbUndo" title="Undo" aria-label="Undo" disabled>↶</button>
+  <button id="tbReset" title="Reset everything" aria-label="Reset everything">⟲</button>
   <button id="tbFit" title="Recentre" aria-label="Recentre and reset zoom">⌖</button>
 </div>
 
@@ -167,10 +195,7 @@
   </div>
 
   <div id="sheetbody">
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:4px;">
-      <h1>Coupler-Curve Thermometer</h1>
-      <button id="help" title="Help" aria-label="Help">?</button>
-    </div>
+    <h1 style="margin-top:4px;">Coupler-Curve Thermometer</h1>
 
     <div class="sec">Preset</div>
     <select id="preset">
@@ -200,7 +225,7 @@
     </div>
     <div class="checks">
       <label class="chk"><input type="checkbox" id="ticks" checked> Scale ticks</label>
-      <label class="chk"><input type="checkbox" id="ghost"> Inner curves</label>
+      <label class="chk"><input type="checkbox" id="ghost" checked> Inner curves</label>
       <label class="chk"><input type="checkbox" id="showBox"> Bounding box</label>
       <label class="chk"><input type="checkbox" id="dims"> Dimensions</label>
     </div>
@@ -266,9 +291,11 @@
     by dragging its pin on the drawing, and the values you are changing appear at the top
     of the screen while you drag.</p>
     <dl>
-      <dt>Drag a mount or pin</dt><dd>Reshapes the linkage, and stops Animate so you
-        aren't tuning against a moving target. The four large dots are the fixed mounts;
-        the smaller ones are the moving joints.</dd>
+      <dt>Drag a mount or pin</dt><dd>Reshapes the linkage. The sweep keeps running and
+        <b>winds up to full speed</b> while you drag, so the full excursion of your change plays
+        out under your finger; let go and it returns to your speed setting. The four
+        large dots are the fixed mounts; the smaller ones are the moving joints, and
+        those move with the animation — pause with ⏸ if you want one to hold still.</dd>
       <dt>Pinch</dt><dd>Zoom. This is also how you get fine control: a drag works in real
         inches, so zoomed right in one pixel is about a hundredth of an inch.</dd>
       <dt>One finger on empty space</dt><dd>Pan. Two fingers pan as well.</dd>
@@ -281,9 +308,14 @@
 
     <h3>The buttons</h3>
     <dl>
-      <dt>▶ / ⏸</dt><dd>Play or pause the temperature sweep.</dd>
-      <dt>↶</dt><dd>Undo — drags, presets, Reset, loading a design. 60 deep.</dd>
-      <dt>⌖</dt><dd>Recentre and reset zoom.</dd>
+      <dt>▶ / ⏸</dt><dd>Play or pause the temperature sweep. Pausing resumes from the
+        temperature on screen, so it never jumps.</dd>
+      <dt>↶</dt><dd>Undo — drags, presets, Reset, loading a design. 60 deep, and
+        greyed out when there is nothing to undo.</dd>
+      <dt>⟲</dt><dd>Reset everything to how the page opened — geometry, every setting,
+        rotation, zoom and pan. One <b>↶</b> puts it all back.</dd>
+      <dt>⌖</dt><dd>Recentre and reset zoom. Leaves the rotation alone.</dd>
+      <dt>?</dt><dd>This. It sits on its own at the left end of the row.</dd>
       <dt>The grey bar</dt><dd>Tap or drag it to open and close the control sheet.</dd>
     </dl>
 
@@ -367,14 +399,20 @@
   };
 
   const geo=Object.assign({}, PRESETS.serpentine);
-  const cfg={temp:70, tmin:-20, tmax:110, demo:true, ticks:true, ghost:false, showBox:false, dims:false, speed:0.1, tdir:false, rot:110,
+  const cfg={temp:70, tmin:-20, tmax:110, demo:true, ticks:true, ghost:true, showBox:false, dims:false, speed:0.1, tdir:false, rot:110,
              extMin:0, extMax:15.5,    // used slice of the actuator stroke, in inches of extension
                                        // 15.5 is near the ceiling for the serpentine preset:
                                        // dA+rA=40.25, so past ~15.75″ the drive triangle won't close
              hole:0.375, lwid:1.5};    // fabrication: pivot hole ⌀ and link stock width, inches
+  // the page as it first opened — what resetAll() puts back
+  const CFGDEFAULTS=Object.assign({},cfg);
   // actuator stroke envelope (pin-to-pin): 24″ retracted + 18″ stroke = 42″ extended
   const ACT={lmin:24, stroke:18};
   let demoT=0.35;
+  // Non-zero REPLACES cfg.speed for the sweep. mobile.html winds it up (DRAGSPEED) while
+  // a handle is being dragged, so the whole excursion of the change plays out under your
+  // finger. cfg.speed itself is never touched, so the slider still reads what you set.
+  let speedOverride=0;
 
   // ---------- kinematics ----------
   function circInt(p0,r0,p1,r1,sign){
@@ -857,7 +895,7 @@
   // ---------- loop ----------
   function frame(){
     if(cfg.demo){
-      demoT+=0.0045*cfg.speed;
+      demoT+=0.0045*(speedOverride||cfg.speed);
       const f=0.5-0.5*Math.cos(demoT*Math.PI*2);
       cfg.temp=cfg.tmin+(cfg.tmax-cfg.tmin)*f;
       const el=document.getElementById('temp');
@@ -869,6 +907,11 @@
   }
 
   // ---------- controls ----------
+  function syncDemoPhase(){
+    // resume the cycle from the CURRENT temperature so toggling never jumps
+    const f=clamp((cfg.temp-cfg.tmin)/(cfg.tmax-cfg.tmin),0,1);
+    demoT=Math.acos(1-2*f)/(2*Math.PI);
+  }
   const GEOKEYS=['L2','L3','L4','gx','gy','cu','cv','L5','L6','ox','oy','cu2','cv2','rA','dA','anch'];
   function syncSliders(){
     GEOKEYS.forEach(k=>{
@@ -1241,9 +1284,11 @@
       if(Object.keys(PRESETS[k]).every(p=>Math.abs(PRESETS[k][p]-g[p])<1e-9)) return k;
     return 'custom';
   }
-  // cfg fields a wholesale change can move: the range/excursion reshape the curve, and
-  // Reset zeroes the rotation — without rot here, undoing a Reset would leave the view turned
-  const UNDOCFG=['tmin','tmax','extMin','extMax','rot'];
+  // Everything in cfg EXCEPT temp and demo. The two exclusions are the point: a drag
+  // turns the sweep off, and undo must not turn it back on or you'd be tuning against a
+  // moving target again. Everything else reshapes the curve or the view, so Reset has to
+  // be undoable in one step.
+  const UNDOCFG=Object.keys(CFGDEFAULTS).filter(k=>k!=='temp'&&k!=='demo');
   function pushUndo(){
     const snap={geo:Object.assign({},geo)};
     UNDOCFG.forEach(k=>snap[k]=cfg[k]);
@@ -1261,6 +1306,20 @@
     syncUI(); rebuildPath();          // syncUI, not syncSliders: the cfg fields moved too
   }
   document.getElementById('undo').addEventListener('click',undo);
+  // Reset: the page as it first opened. Geometry back to the selected preset, every cfg
+  // value back to the defaults compiled into this file, and the view squared up —
+  // rotation, zoom AND pan. One undo step puts the lot back, which is why UNDOCFG had to
+  // widen to all of cfg. Pan and zoom are not undoable, but they never were: they are
+  // transient nudges, not part of the design.
+  function resetAll(){
+    pushUndo();
+    const v=document.getElementById('preset').value;
+    Object.assign(geo, PRESETS[v]||PRESETS.serpentine);
+    Object.assign(cfg, CFGDEFAULTS);
+    pan.x=pan.y=0; zoom=1; speedOverride=0;
+    syncDemoPhase();                   // the sweep comes back on; don't let it jump
+    syncUI(); rebuildPath();
+  }
 
   // ---------- draggable mounts & hover labels ----------
   let dragPivot=null, hoverPivot=null, hoverCompId=null, lastWorld=null;
@@ -1406,8 +1465,6 @@
   const sheet=document.getElementById('sheet');
   const grab=document.getElementById('grab');
   const tbPlay=document.getElementById('tbPlay');
-  const tbUndo=document.getElementById('tbUndo');
-  const undoBtn=document.getElementById('undo');
 
   function hlSliders(ids){
     document.querySelectorAll('#sheet .row.hl').forEach(r=>r.classList.remove('hl'));
@@ -1456,10 +1513,13 @@
     const r=canvas.getBoundingClientRect();
     return {x:e.clientX-r.left, y:e.clientY-r.top};
   }
-  function stopDemo(){
-    cfg.demo=false;
-    document.getElementById('demo').checked=false;
-  }
+  // A drag does NOT stop the sweep here — it winds it up to 1× (the top of the speed
+  // slider's range, and 10× the 0.1 default), so the whole excursion of the change you
+  // are making plays out while you make it. 2× was tried first and read as too fast.
+  // cfg.speed is left alone, so the slider still shows what you set and release just
+  // clears the override.
+  const DRAGSPEED=1;
+  function boostSweep(on){ speedOverride=on?DRAGSPEED:0; }
 
   // ---------- gestures ----------
   // Multi-touch bookkeeping: index.html tracks a single pointer, which is enough for a
@@ -1475,7 +1535,7 @@
     e.preventDefault();
     if(pts.size===2){
       // a pinch outranks a drag or a pan; abandon whichever was running
-      if(dragPivot){ dragPivot=null; hideTip(); }
+      if(dragPivot){ dragPivot=null; hideTip(); boostSweep(false); }
       panning=false;
       const [a,b]=[...pts.values()];
       pinch={d:Math.hypot(a.x-b.x,a.y-b.y), m:{x:(a.x+b.x)/2,y:(a.y+b.y)/2}};
@@ -1486,7 +1546,10 @@
     const s=screenOf(e);
     dragPivot=pickPivot(s.x,s.y,e.pointerType);
     if(dragPivot){
-      stopDemo();                        // a drag always stops the sweep
+      // The sweep is NOT stopped. index.html pauses on touch-down, which suits a cursor,
+      // but here the touch radius is 30px over pins ~10px apart, so almost any tap in
+      // the middle of the drawing lands on a handle — pausing is the ⏸ button's job.
+      // The boost waits for real movement, so a stray tap doesn't lurch the animation.
       dragMoved=false; lastWorld=worldOf(e);
       showDragTip(dragPivot);
     } else {
@@ -1517,7 +1580,9 @@
     if(!dragPivot) return;
     moved=99;
     const w=worldOf(e);
-    if(!dragMoved){ dragMoved=true; pushUndo(); }   // snapshot once per drag
+    // First real movement, not touch-down, is what winds the sweep up and arms undo,
+    // so a stray tap costs nothing.
+    if(!dragMoved){ dragMoved=true; boostSweep(true); pushUndo(); }
     applyDrag(dragPivot,w);
     showDragTip(dragPivot);              // the values tick over as you move
     rebuildPath();                       // view refit is suppressed during the drag
@@ -1527,6 +1592,9 @@
     pts.delete(e.pointerId);
     if(pts.size<2) pinch=null;
     if(pts.size) return;
+    // Every path out of a drag comes through here, so restore the sweep speed
+    // unconditionally — a boost left switched on would be permanent.
+    boostSweep(false);
     if(dragPivot){ dragPivot=null; hideTip(); rebuildPath(); }   // release refits the view
     panning=false;
     // double-tap recentres. Two clean taps, close in time and place — a tap that panned
@@ -1550,16 +1618,23 @@
   },{passive:false});
 
   // ---------- toolbar ----------
+  // One row: ?  ·············  ▶/⏸ ↶ ⟲ ⌖
+  // ⌖ only moves the view. ⟲ is the big one — geometry, every setting, rotation, zoom
+  // and pan, back to how the page opened — which is exactly why ↶ sits next to it.
   document.getElementById('tbFit').addEventListener('click',()=>{ pan.x=pan.y=0; zoom=1; });
-  tbUndo.addEventListener('click',()=>undo());
+  document.getElementById('tbUndo').addEventListener('click',()=>undo());
+  document.getElementById('tbReset').addEventListener('click',resetAll);
   tbPlay.addEventListener('click',()=>{
     cfg.demo=!cfg.demo;
-    const box=document.getElementById('demo');
-    box.checked=cfg.demo;
-    box.dispatchEvent(new Event('change'));    // lets the core resync the sweep phase
+    if(cfg.demo) syncDemoPhase();      // resume from the temperature on screen
+    document.getElementById('demo').checked=cfg.demo;
   });
-  // cfg.demo and the undo stack are flipped from a dozen places — a one-line tick is
-  // cheaper than making every one of them announce itself.
+  document.getElementById('demo').addEventListener('change',e=>{
+    if(e.target.checked) syncDemoPhase();
+  });
+  // cfg.demo and the undo stack are both changed from half a dozen places — a two-line
+  // tick is cheaper than making every one of them announce itself.
+  const tbUndo=document.getElementById('tbUndo'), undoBtn=document.getElementById('undo');
   (function tick(){
     tbPlay.textContent=cfg.demo?'⏸':'▶';
     tbUndo.disabled=undoBtn.disabled;
@@ -1595,6 +1670,7 @@
     get bbox(){ return bbox; },
     get zoom(){ return zoom; }, rotPt,
     screen:TX, dir:rotDir,             // world -> screen, for tests that check layout
+    sweepSpeed:()=>speedOverride||cfg.speed,   // what the sweep is actually running at
     pick:pickPivot,                    // so a test can assert the touch hit radius directly
     undoDepth:()=>undoStack.length,
     get pathJ(){ return pathJ; },      // rebuildPath reassigns it, so read it live
@@ -1608,13 +1684,7 @@
     const v=e.target.value;
     if(PRESETS[v]){ pushUndo(); Object.assign(geo,PRESETS[v]); syncSliders(); rebuildPath(); }
   });
-  document.getElementById('reset').addEventListener('click',()=>{
-    const v=document.getElementById('preset').value;
-    const src=PRESETS[v]||PRESETS.serpentine;
-    pushUndo(); Object.assign(geo,src);
-    cfg.rot=0;                         // Reset squares the view back up as well
-    syncUI(); rebuildPath();
-  });
+  document.getElementById('reset').addEventListener('click',resetAll);   // same as ⟲
   // help dialog. <dialog>.showModal() gives a backdrop for free; a click that lands on
   // the dialog element itself IS the backdrop, so that closes too. There is an × because
   // a phone has no Escape key.

@@ -162,7 +162,7 @@
   <div class="sec">Display</div>
   <div class="checks">
     <label class="chk"><input type="checkbox" id="ticks" checked> Scale ticks</label>
-    <label class="chk"><input type="checkbox" id="ghost"> Inner curves</label>
+    <label class="chk"><input type="checkbox" id="ghost" checked> Inner curves</label>
     <label class="chk"><input type="checkbox" id="showBox"> Bounding box</label>
     <label class="chk"><input type="checkbox" id="dims"> Dimensions</label>
   </div>
@@ -339,14 +339,20 @@
   };
 
   const geo=Object.assign({}, PRESETS.serpentine);
-  const cfg={temp:70, tmin:-20, tmax:110, demo:true, ticks:true, ghost:false, showBox:false, dims:false, speed:0.1, tdir:false, rot:110,
+  const cfg={temp:70, tmin:-20, tmax:110, demo:true, ticks:true, ghost:true, showBox:false, dims:false, speed:0.1, tdir:false, rot:110,
              extMin:0, extMax:15.5,    // used slice of the actuator stroke, in inches of extension
                                        // 15.5 is near the ceiling for the serpentine preset:
                                        // dA+rA=40.25, so past ~15.75″ the drive triangle won't close
              hole:0.375, lwid:1.5};    // fabrication: pivot hole ⌀ and link stock width, inches
+  // the page as it first opened — what resetAll() puts back
+  const CFGDEFAULTS=Object.assign({},cfg);
   // actuator stroke envelope (pin-to-pin): 24″ retracted + 18″ stroke = 42″ extended
   const ACT={lmin:24, stroke:18};
   let demoT=0.35;
+  // Non-zero REPLACES cfg.speed for the sweep. mobile.html winds it up (DRAGSPEED) while
+  // a handle is being dragged, so the whole excursion of the change plays out under your
+  // finger. cfg.speed itself is never touched, so the slider still reads what you set.
+  let speedOverride=0;
 
   // ---------- kinematics ----------
   function circInt(p0,r0,p1,r1,sign){
@@ -829,7 +835,7 @@
   // ---------- loop ----------
   function frame(){
     if(cfg.demo){
-      demoT+=0.0045*cfg.speed;
+      demoT+=0.0045*(speedOverride||cfg.speed);
       const f=0.5-0.5*Math.cos(demoT*Math.PI*2);
       cfg.temp=cfg.tmin+(cfg.tmax-cfg.tmin)*f;
       const el=document.getElementById('temp');
@@ -841,6 +847,11 @@
   }
 
   // ---------- controls ----------
+  function syncDemoPhase(){
+    // resume the cycle from the CURRENT temperature so toggling never jumps
+    const f=clamp((cfg.temp-cfg.tmin)/(cfg.tmax-cfg.tmin),0,1);
+    demoT=Math.acos(1-2*f)/(2*Math.PI);
+  }
   const GEOKEYS=['L2','L3','L4','gx','gy','cu','cv','L5','L6','ox','oy','cu2','cv2','rA','dA','anch'];
   function syncSliders(){
     GEOKEYS.forEach(k=>{
@@ -1213,9 +1224,11 @@
       if(Object.keys(PRESETS[k]).every(p=>Math.abs(PRESETS[k][p]-g[p])<1e-9)) return k;
     return 'custom';
   }
-  // cfg fields a wholesale change can move: the range/excursion reshape the curve, and
-  // Reset zeroes the rotation — without rot here, undoing a Reset would leave the view turned
-  const UNDOCFG=['tmin','tmax','extMin','extMax','rot'];
+  // Everything in cfg EXCEPT temp and demo. The two exclusions are the point: a drag
+  // turns the sweep off, and undo must not turn it back on or you'd be tuning against a
+  // moving target again. Everything else reshapes the curve or the view, so Reset has to
+  // be undoable in one step.
+  const UNDOCFG=Object.keys(CFGDEFAULTS).filter(k=>k!=='temp'&&k!=='demo');
   function pushUndo(){
     const snap={geo:Object.assign({},geo)};
     UNDOCFG.forEach(k=>snap[k]=cfg[k]);
@@ -1233,6 +1246,20 @@
     syncUI(); rebuildPath();          // syncUI, not syncSliders: the cfg fields moved too
   }
   document.getElementById('undo').addEventListener('click',undo);
+  // Reset: the page as it first opened. Geometry back to the selected preset, every cfg
+  // value back to the defaults compiled into this file, and the view squared up —
+  // rotation, zoom AND pan. One undo step puts the lot back, which is why UNDOCFG had to
+  // widen to all of cfg. Pan and zoom are not undoable, but they never were: they are
+  // transient nudges, not part of the design.
+  function resetAll(){
+    pushUndo();
+    const v=document.getElementById('preset').value;
+    Object.assign(geo, PRESETS[v]||PRESETS.serpentine);
+    Object.assign(cfg, CFGDEFAULTS);
+    pan.x=pan.y=0; zoom=1; speedOverride=0;
+    syncDemoPhase();                   // the sweep comes back on; don't let it jump
+    syncUI(); rebuildPath();
+  }
 
   // ---------- draggable mounts & hover labels ----------
   let dragPivot=null, hoverPivot=null, hoverCompId=null, lastWorld=null;
@@ -1434,11 +1461,6 @@
     clampPan();
   },{passive:false});
   // spacebar toggles auto-cycle — always, except while typing in a text/number field
-  function syncDemoPhase(){
-    // resume the cycle from the CURRENT temperature so toggling never jumps
-    const f=clamp((cfg.temp-cfg.tmin)/(cfg.tmax-cfg.tmin),0,1);
-    demoT=Math.acos(1-2*f)/(2*Math.PI);
-  }
   window.addEventListener('keydown',e=>{
     // help is modal: don't let Space or Ctrl+Z reach the sim behind it. helpdlg is a
     // const declared further down, but this only ever runs after init, so it's bound.
@@ -1500,6 +1522,7 @@
     get bbox(){ return bbox; },
     get zoom(){ return zoom; }, rotPt,
     screen:TX, dir:rotDir,             // world -> screen, for tests that check layout
+    sweepSpeed:()=>speedOverride||cfg.speed,   // what the sweep is actually running at
     undoDepth:()=>undoStack.length,
     get pathJ(){ return pathJ; },      // rebuildPath reassigns it, so read it live
     dump:()=>JSON.stringify({geo,cfg},null,1)
@@ -1508,13 +1531,7 @@
     const v=e.target.value;
     if(PRESETS[v]){ pushUndo(); Object.assign(geo,PRESETS[v]); syncSliders(); rebuildPath(); }
   });
-  document.getElementById('reset').addEventListener('click',()=>{
-    const v=document.getElementById('preset').value;
-    const src=PRESETS[v]||PRESETS.serpentine;
-    pushUndo(); Object.assign(geo,src);
-    cfg.rot=0;                         // Reset squares the view back up as well
-    syncUI(); rebuildPath();           // syncUI, not syncSliders: the rot slider moved too
-  });
+  document.getElementById('reset').addEventListener('click',resetAll);
   // help dialog. <dialog>.showModal() gives Escape-to-close and a backdrop for free;
   // a click that lands on the dialog element itself IS the backdrop, so that closes too.
   const helpdlg=document.getElementById('helpdlg');

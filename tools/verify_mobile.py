@@ -112,8 +112,13 @@ with sync_playwright() as p:
 
     # ---- 1. the sheet ---------------------------------------------------
     assert pg.evaluate("__ct.sheetOpen") is False, "sheet must start collapsed"
+    # collapsed, the sheet is the grab strip and nothing else
     peek = pg.evaluate("__ct.peek")
-    assert 120 < peek < 260, f"peek height {peek} looks wrong"
+    assert 40 <= peek < 70, f"peek height {peek} should be just the grab strip"
+    assert pg.eval_on_selector("#sheet", "e => getComputedStyle(e).backgroundColor")\
+        in ("rgba(0, 0, 0, 0)", "transparent"), "the collapsed sheet must not paint a panel"
+    assert pg.eval_on_selector("#grab", "e => e.getBoundingClientRect().height") >= 44, \
+        "the grab strip is the only tap target in peek; keep it thumb-sized"
     gbox = pg.eval_on_selector("#grab", "e => e.getBoundingClientRect().toJSON()")
     pg.tap("#grab"); pg.wait_for_timeout(350)
     assert pg.evaluate("__ct.sheetOpen") is True, "tapping the grab bar must open the sheet"
@@ -144,8 +149,20 @@ with sync_playwright() as p:
     pg.eval_on_selector("#sheetbody", "e => e.scrollTop = 400")
     assert pg.eval_on_selector("#sheetbody", "e => e.scrollTop") > 200, "sheet body will not scroll"
     pg.eval_on_selector("#sheetbody", "e => e.scrollTop = 0")
+
+    # Every range input must hand vertical movement back to the scroller, or a thumb
+    # swiping up the sheet drags whichever slider it happens to cross. touch-action is
+    # enforced by the compositor and synthetic pointer events bypass it, so this asserts
+    # the mechanism rather than the gesture -- but the mechanism IS the fix.
+    bad = pg.eval_on_selector_all(
+        "#sheet input[type=range]",
+        "els => els.filter(e => getComputedStyle(e).touchAction !== 'pan-y')"
+        ".map(e => e.id + '@' + getComputedStyle(e).touchAction)")
+    assert not bad, f"sliders that will steal a vertical scroll: {bad}"
+    nr = pg.eval_on_selector_all("#sheet input[type=range]", "e => e.length")
     pg.tap("#grab"); pg.wait_for_timeout(350)
-    print(f"sheet body scrolls, touch-action {ta}")
+    print(f"sheet body scrolls (touch-action {ta}); all {nr} sliders are pan-y, "
+          f"so a vertical swipe scrolls instead of dragging them")
 
     # ---- 2. the drawing clears the collapsed sheet ----------------------
     clear = pg.evaluate("""() => {
@@ -179,7 +196,7 @@ with sync_playwright() as p:
     expect_missing = (GEO_SLIDERS | {k + "V" for k in GEO_SLIDERS}
                       | {"panel", "hide", "toggle", "hint"})
     expect_extra = {"sheet", "grab", "sheethead", "sheetbody", "tools",
-                    "tbUndo", "tbFit", "tbPlay"}
+                    "tbReset", "tbFit", "tbPlay", "tbUndo"}
     assert missing == expect_missing, \
         f"unexpected difference\n  only missing should be geometry sliders\n" \
         f"  missing but should not be: {sorted(missing - expect_missing)}\n" \
@@ -206,17 +223,39 @@ with sync_playwright() as p:
     print(f"all {len(DRAG_OWNS)} handles drive their geometry: " +
           ", ".join(f"{h}->{'+'.join(k)}" for h, k in DRAG_OWNS.items()))
 
-    # ---- 5. drag stops the sweep, arms undo, and shows live values ------
+    # ---- 5. only the button pauses; a drag earns it by moving ------------
+    # A tap must NOT pause. The touch radius is 30px over pins ~10px apart, so almost
+    # any tap in the middle of the drawing lands on a handle -- if touch-down paused,
+    # playback would stop every time someone poked the screen.
     pg.reload(); pg.wait_for_timeout(600); ready(pg, animate=True)
     assert pg.evaluate("__ct.cfg.demo") is True, "Animate is on by default"
     pg.evaluate("__ct.cfg.temp = 70")           # pin the pose; the sweep is still running
     s = pg.evaluate("__ct.pivotScreen('O4')")
-    gx0 = pg.evaluate("__ct.geo.gx")
+    gx_tap = pg.evaluate("__ct.geo.gx")
     ptr(pg, "pointerdown", 1, s["x"], s["y"])
-    assert pg.evaluate("__ct.cfg.demo") is False, "grabbing a handle must stop Animate"
+    assert pg.evaluate("__ct.cfg.demo") is True, "touching a handle must NOT pause"
     assert pg.eval_on_selector("#tip", "e => getComputedStyle(e).display") == "block", \
-        "the drag tooltip must appear on grab"
+        "the drag tooltip must still appear on grab"
+    ptr(pg, "pointerup", 1, s["x"], s["y"])
+    assert pg.evaluate("__ct.cfg.demo") is True, "a tap that never moved must NOT pause"
+    assert abs(pg.evaluate("__ct.geo.gx") - gx_tap) < 1e-9, "a tap must not change geometry"
+    assert pg.evaluate("__ct.undoDepth()") == 0, "a tap must not push an undo entry"
+    print("a tap on a handle neither pauses nor edits -- pausing is the button's job")
+
+    # A drag does not stop the sweep either -- it winds it up to 1x so the whole
+    # excursion of the change plays out, and release puts the speed back. cfg.speed is
+    # never written, so the slider keeps whatever the user set.
+    s = pg.evaluate("__ct.pivotScreen('O4')")   # a fixed mount, so the pose can't move it
+    gx0 = pg.evaluate("__ct.geo.gx")
+    speed0 = pg.evaluate("__ct.cfg.speed")
+    ptr(pg, "pointerdown", 1, s["x"], s["y"])
+    assert pg.evaluate("__ct.sweepSpeed()") == speed0, "touch-down alone must not boost"
     ptr(pg, "pointermove", 1, s["x"] + 30, s["y"] + 18)
+    assert pg.evaluate("__ct.cfg.demo") is True, "dragging must NOT stop the sweep"
+    assert pg.evaluate("__ct.sweepSpeed()") == 1, \
+        f"drag should sweep at 1x, got {pg.evaluate('__ct.sweepSpeed()')}"
+    assert pg.evaluate("__ct.cfg.speed") == speed0, "cfg.speed itself must be left alone"
+    assert pg.eval_on_selector("#speed", "e => +e.value") == speed0, "the slider must not move"
     tiptext = pg.eval_on_selector("#tip .s", "e => e.textContent")
     gx1 = pg.evaluate("__ct.geo.gx")
     assert abs(gx1 - gx0) > 1e-9, "the drag changed nothing"
@@ -225,16 +264,20 @@ with sync_playwright() as p:
     ptr(pg, "pointerup", 1, s["x"] + 30, s["y"] + 18)
     assert pg.eval_on_selector("#tip", "e => getComputedStyle(e).display") == "none", \
         "the tooltip must clear on release"
-    print(f"drag tip carried the values the sliders used to: {tiptext!r}")
+    assert pg.evaluate("__ct.sweepSpeed()") == speed0, \
+        "release must restore the speed, or the boost would be permanent"
+    print(f"drag sweeps at 1x and restores {speed0}x on release; "
+          f"tip carried the values the sliders used to: {tiptext!r}")
 
+    # undo is back in the toolbar row, next to Reset -- which is what it is there for
     assert pg.evaluate("__ct.undoDepth()") == 1
-    pg.wait_for_timeout(80)                     # the toolbar mirrors #undo on the next frame
+    pg.wait_for_timeout(80)          # the toolbar mirrors #undo on the next frame
     assert pg.eval_on_selector("#tbUndo", "e => !e.disabled"), "toolbar undo should be armed"
     pg.tap("#tbUndo"); pg.wait_for_timeout(200)
     assert abs(pg.evaluate("__ct.geo.gx") - gx0) < 1e-9, "toolbar undo did not restore gx"
     assert pg.eval_on_selector("#preset", "e => e.value") == "serpentine", \
         "undo relabels the preset from the geometry"
-    print("toolbar undo restored gx and the preset label")
+    print("undo restored gx and the preset label")
 
     # a grab with no movement must not push an undo entry
     pg.evaluate("__ct.rebuild()")
@@ -244,6 +287,20 @@ with sync_playwright() as p:
     ptr(pg, "pointerup", 1, s["x"], s["y"])
     assert pg.evaluate("__ct.undoDepth()") == depth, "a grab-and-release pushed an undo entry"
     print("grab without move leaves the undo stack alone")
+
+    # a drag cut short by a second finger must give the speed back too, or the boost
+    # would be left switched on for good
+    speed0 = pg.evaluate("__ct.cfg.speed")
+    s = pg.evaluate("__ct.pivotScreen('O4')")
+    ptr(pg, "pointerdown", 1, s["x"], s["y"])
+    ptr(pg, "pointermove", 1, s["x"] + 20, s["y"] + 10)
+    assert pg.evaluate("__ct.sweepSpeed()") == 1
+    ptr(pg, "pointerdown", 2, s["x"] + 90, s["y"])          # pinch outranks the drag
+    assert pg.evaluate("__ct.sweepSpeed()") == speed0, "pinch cancelled the drag but kept the boost"
+    ptr(pg, "pointerup", 1, s["x"] + 20, s["y"] + 10)
+    ptr(pg, "pointerup", 2, s["x"] + 90, s["y"])
+    assert pg.evaluate("__ct.sweepSpeed()") == speed0
+    print("a pinch that interrupts a drag restores the speed too")
 
     # ---- 6. a fingertip gets more room than a cursor --------------------
     pg.reload(); pg.wait_for_timeout(600); ready(pg)
@@ -343,10 +400,67 @@ with sync_playwright() as p:
     pg.tap("#tbPlay"); pg.wait_for_timeout(120)
     assert pg.evaluate("__ct.cfg.demo") is True
     assert pg.eval_on_selector("#tbPlay", "e => e.textContent") == "⏸"
-    pg.evaluate("__ct.pan.x = 55; __ct.pan.y = -22")
+    # Play resumes from the temperature on screen rather than jumping back to wherever
+    # the phase counter had got to. Pause BEFORE setting the temperature, or frame()
+    # overwrites it on the next tick and the check measures nothing.
+    pg.tap("#tbPlay"); pg.wait_for_timeout(80)     # pause
+    assert pg.evaluate("__ct.cfg.demo") is False
+    pg.evaluate("__ct.cfg.temp = 12")
+    pg.tap("#tbPlay"); pg.wait_for_timeout(80)     # play again
+    assert pg.evaluate("__ct.cfg.demo") is True
+    assert abs(pg.evaluate("__ct.cfg.temp") - 12) < 3, \
+        f"the sweep jumped to {pg.evaluate('__ct.cfg.temp'):.1f}F instead of resuming near 12F"
+
+    # ⌖ moves the view and nothing else
+    pg.evaluate("__ct.pan.x = 55; __ct.pan.y = -22; __ct.cfg.rot = 40")
     pg.tap("#tbFit"); pg.wait_for_timeout(120)
     assert pg.evaluate("__ct.pan.x") == 0 and pg.evaluate("__ct.zoom") == 1
-    print("toolbar play/pause and recentre work; glyph tracks cfg.demo")
+    assert pg.evaluate("__ct.cfg.rot") == 40, "recentre must leave the rotation alone"
+    print("toolbar play/pause resumes in place; recentre clears pan+zoom only")
+
+    # ⟲ is the full reset: geometry, every setting, rotation, zoom and pan
+    pg.reload(); pg.wait_for_timeout(600); ready(pg)
+    pg.evaluate("""() => {
+      __ct.geo.L3 = 21.5;
+      __ct.cfg.rot = 40; __ct.cfg.tmax = 150; __ct.cfg.extMax = 9;
+      __ct.cfg.showBox = true; __ct.cfg.speed = 0.8; __ct.cfg.hole = 1.25;
+      __ct.pan.x = 70; __ct.pan.y = -30;
+      __ct.rebuild();
+    }""")
+    pinch(pg, 195, 300, 80, 240)
+    assert pg.evaluate("__ct.zoom") > 2
+    pg.tap("#tbReset"); pg.wait_for_timeout(250)
+    after = pg.evaluate("""({L3: __ct.geo.L3, rot: __ct.cfg.rot, tmax: __ct.cfg.tmax,
+      extMax: __ct.cfg.extMax, showBox: __ct.cfg.showBox, speed: __ct.cfg.speed,
+      hole: __ct.cfg.hole, ghost: __ct.cfg.ghost, zoom: __ct.zoom,
+      panx: __ct.pan.x, pany: __ct.pan.y})""")
+    assert abs(after["L3"] - 7.7705) < 1e-9, after
+    assert after["rot"] == 110 and after["tmax"] == 110 and after["extMax"] == 15.5, after
+    assert after["showBox"] is False and after["speed"] == 0.1 and after["hole"] == 0.375, after
+    assert after["ghost"] is True, "inner curves ship on; reset must restore that"
+    assert after["zoom"] == 1 and after["panx"] == 0 and after["pany"] == 0, after
+    # and the DOM followed, not just cfg
+    assert pg.eval_on_selector("#tmax", "e => e.value") == "110"
+    assert pg.eval_on_selector("#rot", "e => e.value") == "110"
+    assert pg.eval_on_selector("#ghost", "e => e.checked") is True
+    assert pg.eval_on_selector("#showBox", "e => e.checked") is False
+    print("⟲ restored geometry, every setting, rotation, zoom and pan")
+
+    # one undo step puts the whole thing back -- that is why UNDOCFG covers all of cfg
+    pg.eval_on_selector("#undo", "e => e.click()"); pg.wait_for_timeout(250)
+    back = pg.evaluate("""({L3: __ct.geo.L3, rot: __ct.cfg.rot, tmax: __ct.cfg.tmax,
+      extMax: __ct.cfg.extMax, showBox: __ct.cfg.showBox, speed: __ct.cfg.speed,
+      hole: __ct.cfg.hole})""")
+    assert abs(back["L3"] - 21.5) < 1e-9, back
+    assert back["rot"] == 40 and back["tmax"] == 150 and back["extMax"] == 9, back
+    assert back["showBox"] is True and back["speed"] == 0.8 and back["hole"] == 1.25, back
+    print("one undo puts every one of them back")
+
+    # the sheet's Reset button is the same action
+    pg.evaluate("__ct.cfg.rot = 25; __ct.rebuild()")
+    pg.eval_on_selector("#reset", "e => e.click()"); pg.wait_for_timeout(250)
+    assert pg.evaluate("__ct.cfg.rot") == 110, "the sheet Reset must match ⟲"
+    print("the sheet's Reset button does the same thing")
 
     # ---- 9. iOS focus-zoom floor ----------------------------------------
     small = pg.eval_on_selector_all(
@@ -364,7 +478,7 @@ with sync_playwright() as p:
     pg.eval_on_selector_all("#sheet details", "els => els.forEach(e => e.open = true)")
     pg.wait_for_timeout(350)
     hits = pg.eval_on_selector_all(
-        "#sheet button, #tools button, #sheet .chk, #sheet summary",
+        "#sheet button, #tools button, #help, #sheet .chk, #sheet summary",
         "els => els.map(e => ({what: e.id || e.className || e.tagName,"
         " h: Math.round(e.getBoundingClientRect().height)}))")
     smallhit = [f"{h['what']}@{h['h']}" for h in hits if h["h"] < 30]
@@ -372,6 +486,30 @@ with sync_playwright() as p:
     print(f"all {len(hits)} tap targets are >=30px tall "
           f"(smallest {min(h['h'] for h in hits)}px)")
     pg.evaluate("__ct.setSheet(false)")
+
+    # ? sits upper LEFT, opposite the action toolbar, so reaching for help can never be
+    # a mis-tap on Reset -- and the drag tooltip must not sit on top of either of them
+    hb = pg.eval_on_selector("#help", "e => e.getBoundingClientRect().toJSON()")
+    tb = pg.eval_on_selector("#tools", "e => e.getBoundingClientRect().toJSON()")
+    btns = pg.eval_on_selector_all("#tools button",
+        "els => els.map(e => ({id: e.id, x: Math.round(e.getBoundingClientRect().x),"
+        " y: Math.round(e.getBoundingClientRect().y)}))")
+    assert [x["id"] for x in btns] == ["help", "tbPlay", "tbUndo", "tbReset", "tbFit"], btns
+    assert len({x["y"] for x in btns}) == 1, f"the toolbar is not one row: {btns}"
+    assert hb["x"] < 60 and hb["y"] < 60, f"? is not in the upper left: {hb}"
+    assert hb["right"] < min(x["x"] for x in btns if x["id"] != "help"), \
+        "? must sit apart at the left end, not next to the action buttons"
+    pg.evaluate("__ct.cfg.demo = false")
+    s = pg.evaluate("__ct.pivotScreen('O4')")
+    ptr(pg, "pointerdown", 1, s["x"], s["y"])
+    ptr(pg, "pointermove", 1, s["x"] + 12, s["y"] + 8)
+    tp = pg.eval_on_selector("#tip", "e => e.getBoundingClientRect().toJSON()")
+    ptr(pg, "pointerup", 1, s["x"] + 12, s["y"] + 8)
+    assert tp["y"] >= tb["bottom"], f"the drag tip overlaps the toolbar row ({tp} vs {tb})"
+    print(f"toolbar is one row ? .. play/undo/reset/fit; ? at x={hb['x']:.0f}, "
+          f"tip sits below at y={tp['y']:.0f}")
+    # that drag moved O4 -- put the preset back before anything measures the geometry
+    pg.eval_on_selector("#reset", "e => e.click()"); pg.wait_for_timeout(250)
 
     # ---- 10. both DXF exports still work from the phone page ------------
     pg.evaluate("__ct.rebuild()")

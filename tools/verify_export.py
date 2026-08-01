@@ -66,7 +66,7 @@ with sync_playwright() as p:
     assert opts == ["", "bench test A", "bench test B"], opts
     fresh = pg.evaluate("({L3: __ct.geo.L3, rot: __ct.cfg.rot, ghost: __ct.cfg.ghost})")
     assert abs(fresh["L3"] - 7.7705) < 1e-9, f"reload must give the default L3, got {fresh['L3']}"
-    assert fresh["rot"] == 110 and fresh["ghost"] is False, fresh
+    assert fresh["rot"] == 110 and fresh["ghost"] is True, fresh   # inner curves ship on
     print("reload gives defaults, not the last save:", fresh)
 
     # load the older one by name
@@ -488,14 +488,13 @@ with sync_playwright() as p:
     # The box is square to the SCREEN, so its w/h are the footprint at the current
     # orientation and DO change as you rotate -- that is what it is for. At 90 degrees
     # they must simply swap.
-    # back to the shipped defaults first. Reset restores geo and rotation but NOT the
-    # excursion, and section 4's undo test leaves extMax at 12in -- which shrinks how
-    # far every joint sweeps, so the footprint would be measured for the wrong stroke.
-    pg.click("#reset"); pg.wait_for_timeout(200)
+    # back to the shipped defaults first -- Reset now restores every cfg value, including
+    # the excursion that section 4's undo test left at 12in (a shorter stroke sweeps the
+    # joints less far, so the footprint would be measured for the wrong piece)
+    pg.click("#reset"); pg.wait_for_timeout(250)
+    assert pg.evaluate("__ct.cfg.extMax") == 15.5, pg.evaluate("__ct.cfg.extMax")
+    assert pg.input_value("#extMax") == "15.5", pg.input_value("#extMax")
     pg.evaluate("document.querySelectorAll('details').forEach(d => d.open = true)")
-    pg.fill("#extMin", "0");    pg.dispatch_event("#extMin", "change")
-    pg.fill("#extMax", "15.5"); pg.dispatch_event("#extMax", "change")
-    pg.wait_for_timeout(250)
     setrot(0);  sq = pg.evaluate("__ct.bbox")
     setrot(90); rot90 = pg.evaluate("__ct.bbox")
     assert abs(rot90["w"] - sq["h"]) < 1e-6 and abs(rot90["h"] - sq["w"]) < 1e-6, (sq, rot90)
@@ -537,14 +536,20 @@ with sync_playwright() as p:
     pg.fill("#sname", "rot 140"); pg.click("#del"); pg.wait_for_timeout(150)
     print("rotation rides in a named design, slider and label follow on recall")
 
-    # Reset preset squares the view back up, and undo puts the rotation back
+    # Reset returns the view to the angle the page opens at, and undo puts it back.
+    # It used to zero the rotation; it now restores the 110 default like every other
+    # setting, because "reset" means the page as it first opened.
     setrot(120)
+    pg.evaluate("__ct.pan.x = 90; __ct.pan.y = -40")
+    pg.mouse.move(700, 400); pg.mouse.wheel(0, -300); pg.wait_for_timeout(150)
+    assert pg.evaluate("__ct.zoom") != 1
     pg.click("#reset"); pg.wait_for_timeout(250)
-    assert pg.evaluate("__ct.cfg.rot") == 0, pg.evaluate("__ct.cfg.rot")
-    assert pg.input_value("#rot") == "0" and "0°" in pg.inner_text("#rotV")
+    assert pg.evaluate("__ct.cfg.rot") == 110, pg.evaluate("__ct.cfg.rot")
+    assert pg.input_value("#rot") == "110" and "110" in pg.inner_text("#rotV")
+    assert pg.evaluate("__ct.zoom") == 1 and pg.evaluate("__ct.pan.x") == 0, "Reset clears the view"
     pg.keyboard.press("Control+z"); pg.wait_for_timeout(250)
     assert pg.evaluate("__ct.cfg.rot") == 120, pg.evaluate("__ct.cfg.rot")
-    print("Reset zeroes rotation; undo restores it")
+    print("Reset restores the default rotation and clears zoom/pan; undo restores it")
     setrot(0)
 
     # ---- 6d. mouse wheel zoom --------------------------------------------
@@ -579,8 +584,13 @@ with sync_playwright() as p:
 
     # ---- 8. nothing regressed -------------------------------------------
     assert not errs, errs
+    was = pg.evaluate("__ct.cfg.demo")
     pg.keyboard.press("Space"); pg.wait_for_timeout(100)
-    print("spacebar demo toggle still works:", pg.evaluate("__ct.cfg.demo"))
+    assert pg.evaluate("__ct.cfg.demo") is not was, "Space did not toggle the sweep"
+    assert pg.eval_on_selector("#demo", "e => e.checked") is not was, "the checkbox did not follow"
+    pg.keyboard.press("Space"); pg.wait_for_timeout(100)
+    assert pg.evaluate("__ct.cfg.demo") is was, "Space did not toggle back"
+    print(f"spacebar toggles the sweep both ways (from {was})")
     pg.screenshot(path=os.path.join(OUT,"panel.png"))
     b.close()
 print("\nALL CHECKS PASSED")
