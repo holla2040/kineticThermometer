@@ -125,7 +125,15 @@ flow plus both DXF exports (`python3 tools/verify_export.py [outdir]`).
    joyce tube frame (direction u, clamp foot F, tube front/rear) for the
    drawing, the hover seg and the tail drag handle; fitView includes the
    tube's swept body at both stroke extremes so the tail stays on screen.
-3. B = L2 at angle th. C = circle-circle intersection of (B, L3) and
+3. B = L2 at angle th + bAng·DEG (`geo.bAng`, degrees, default 0 = the two
+   crank arms collinear as originally). The bell crank is a real two-arm
+   plate: R is the actuator arm (angle th solved by the triangle), B the
+   coupler arm. Dragging B places it ANYWHERE on the plate (sets L2+bAng, B
+   lands under the cursor); dragging R changes rA and auto-compensates bAng
+   so B — and the whole chain — holds still (the attachment point is
+   independent of the coupler pin, owner request 2026-08-02). The CRANK DXF
+   part carries the bent arm with the same y-flip chirality as PLATE1's
+   cu/cv. C = circle-circle intersection of (B, L3) and
    (O4, L4), branch sign s1. P = B + cu·û + cv·perp(û) where û is unit BC.
 4. D = intersection of (P, L5) and (O6, L6), branch s2. Q = P + cu2·v̂ +
    cv2·perp(v̂) where v̂ is unit PD. Q is the indicator.

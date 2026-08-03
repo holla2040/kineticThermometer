@@ -694,6 +694,7 @@ with sync_playwright() as p:
       const all = JSON.parse(localStorage.getItem('couplerThermometer.saves'));
       const rec = all['joyce rt'];
       delete rec.geo.actT; delete rec.geo.aLmin; delete rec.geo.aStroke; delete rec.geo.aClamp;
+      delete rec.geo.bAng;
       all['old style'] = rec;
       localStorage.setItem('couplerThermometer.saves', JSON.stringify(all));
     }""")
@@ -702,8 +703,8 @@ with sync_playwright() as p:
     pg.select_option("#actT", "1"); pg.wait_for_timeout(100)   # page sits in joyce mode...
     pg.select_option("#sload", "old style"); pg.wait_for_timeout(200)
     g = pg.evaluate("({actT:__ct.geo.actT, aLmin:__ct.geo.aLmin,"
-                    "  aStroke:__ct.geo.aStroke, aClamp:__ct.geo.aClamp})")
-    assert g == {"actT": 0, "aLmin": 24, "aStroke": 18, "aClamp": 23.23}, \
+                    "  aStroke:__ct.geo.aStroke, aClamp:__ct.geo.aClamp, bAng:__ct.geo.bAng})")
+    assert g == {"actT": 0, "aLmin": 24, "aStroke": 18, "aClamp": 23.23, "bAng": 0}, \
         f"an old save must mean the original generic actuator, got {g}"
     print("pre-actuator-types saves load as generic 24/18 even from joyce mode")
 
@@ -831,6 +832,62 @@ with sync_playwright() as p:
     assert pg.evaluate("__ct.geo.dA") == ok_dA and pg.evaluate("__ct.undoDepth()") == depth1, \
         "clicking the GREEN box must do nothing"
     print("red range box: click resets (undoably); green box is inert")
+
+    # ---- 11. the actuator attaches anywhere on the crank plate -----------
+    # bAng bends the bell crank: B rides bAng degrees off the actuator arm.
+    pg.reload(); pg.wait_for_timeout(700)
+    pg.evaluate("__ct.cfg.demo=false; __ct.cfg.temp=70; __ct.rebuild()")
+    pg.wait_for_timeout(150)
+    p0 = pg.evaluate("__ct.pose(__ct.cfg.temp)")
+    # dragging B lands it under the cursor (checked mid-drag, before the refit)
+    # and bends the crank, while the actuator attachment R stays exactly put
+    qb = pg.evaluate("__ct.pivotScreen('B')")
+    pg.mouse.move(qb["x"], qb["y"]); pg.mouse.down()
+    pg.mouse.move(qb["x"] + 35, qb["y"] + 20, steps=6)
+    mid = pg.evaluate("__ct.pivotScreen('B')")
+    assert abs(mid["x"] - (qb["x"]+35)) < 2 and abs(mid["y"] - (qb["y"]+20)) < 2, \
+        f"B must track the cursor anywhere on the plate, got {mid}"
+    pg.mouse.up(); pg.wait_for_timeout(150)
+    p1 = pg.evaluate("__ct.pose(__ct.cfg.temp)")
+    bAng = pg.evaluate("__ct.geo.bAng")
+    assert abs(bAng) > 1, f"dragging B off the arm must bend the crank, bAng={bAng}"
+    assert abs(p1["R"]["x"]-p0["R"]["x"]) < 1e-9 and abs(p1["R"]["y"]-p0["R"]["y"]) < 1e-9, \
+        "moving the coupler pin must not move the actuator attachment"
+    # dragging R slides the attachment radially while B (and the whole chain) holds
+    o2 = pg.evaluate("__ct.pivotScreen('O2')")
+    qr = pg.evaluate("__ct.pivotScreen('R')")
+    dx, dy = qr["x"]-o2["x"], qr["y"]-o2["y"]
+    n = math.hypot(dx, dy); dx, dy = dx/n, dy/n
+    rA0 = pg.evaluate("__ct.geo.rA")
+    pg.mouse.move(qr["x"], qr["y"]); pg.mouse.down()
+    pg.mouse.move(qr["x"] + dx*30, qr["y"] + dy*30, steps=6); pg.mouse.up()
+    pg.wait_for_timeout(150)
+    p2 = pg.evaluate("__ct.pose(__ct.cfg.temp)")
+    assert pg.evaluate("__ct.geo.rA") != rA0, "R drag must change the crank radius"
+    assert abs(p2["B"]["x"]-p1["B"]["x"]) < 1e-9 and abs(p2["B"]["y"]-p1["B"]["y"]) < 1e-9, \
+        "sliding the actuator attachment must leave the coupler pin exactly put"
+    print(f"bell crank bends: bAng={bAng:.1f}deg; B drag pins B, R drag pins B")
+
+    # the CRANK part in the DXF carries the bent arm with the same chirality
+    # convention as PLATE1 (local y flipped by the writer)
+    parts2 = pg.evaluate("__ct.buildParts()")
+    pe2 = parse_dxf(parts2)
+    ck = [(float(e[10][0]), float(e[20][0])) for e in pe2
+          if e["type"] == "CIRCLE" and e[8][0] == "CRANK"]
+    assert len(ck) == 3, ck
+    O2h, Bh, Rh = ck
+    gg = pg.evaluate("({L2:__ct.geo.L2, rA:__ct.geo.rA, bAng:__ct.geo.bAng})")
+    dist = lambda a, b: math.hypot(a[0]-b[0], a[1]-b[1])
+    assert abs(dist(O2h, Bh) - gg["L2"]) < 1e-6
+    assert abs(dist(O2h, Rh) - gg["rA"]) < 1e-6
+    # R's position off the B-arm: world v flips sign in the DXF, like cv does
+    pw_ = pg.evaluate("__ct.pose(__ct.cfg.temp)")
+    ubx, uby = pw_["B"]["x"]/gg["L2"], pw_["B"]["y"]/gg["L2"]
+    wv = -pw_["R"]["x"]*uby + pw_["R"]["y"]*ubx
+    ubx2, uby2 = (Bh[0]-O2h[0])/gg["L2"], (Bh[1]-O2h[1])/gg["L2"]
+    dv = -(Rh[0]-O2h[0])*uby2 + (Rh[1]-O2h[1])*ubx2
+    assert abs(dv + wv) < 1e-6, f"CRANK chirality: dxf v {dv} vs world v {wv}"
+    print("CRANK part carries the bent arm; chirality matches the PLATE convention")
     assert not errs, errs
 
     pg.screenshot(path=os.path.join(OUT,"panel.png"))
