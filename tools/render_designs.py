@@ -5,7 +5,8 @@ Renders through the real page, so what you see is exactly what the simulator
 draws — no second drawing code to drift. Writes one PNG per design plus a
 contact sheet.
 
-    python3 tools/render_designs.py designs.json outdir/
+    python3 tools/render_designs.py designs.json outdir/   # raw search output
+    python3 tools/render_designs.py --presets out.png      # the shipped example-* presets
 """
 import json, os, sys
 from playwright.sync_api import sync_playwright
@@ -63,15 +64,18 @@ def render(items, outdir, tag, rot=110):
     return shots
 
 
-def sheet(shots, path, cols=5, cell=380):
+def sheet(shots, path, cols=5, cell=380, captions=None):
     """Contact sheet without PIL: an HTML page screenshotted by the same browser."""
+    caps = captions or [os.path.basename(s)[:-9] for s in shots]
+    assert len(caps) == len(shots), 'caption/shot mismatch would silently drop tiles'
     imgs = ''.join(f'<figure><img src="file://{os.path.abspath(s)}">'
-                   f'<figcaption>{os.path.basename(s)[:-9]}</figcaption></figure>'
-                   for s in shots)
+                   f'<figcaption>{c}</figcaption></figure>'
+                   for s, c in zip(shots, caps))
     html = (f'<style>body{{margin:0;background:#0e1116;font:12px system-ui;color:#9fb0c8}}'
             f'main{{display:grid;grid-template-columns:repeat({cols},{cell}px);gap:6px;padding:6px}}'
             f'figure{{margin:0}}img{{width:{cell}px;display:block;border:1px solid #223}}'
-            f'figcaption{{padding:3px 2px}}</style><main>{imgs}</main>')
+            f'figcaption{{padding:5px 2px;color:#c8d4e4;font-size:13px}}</style>'
+            f'<main>{imgs}</main>')
     tmp = path + '.html'
     open(tmp, 'w').write(html)
     with sync_playwright() as p:
@@ -83,7 +87,64 @@ def sheet(shots, path, cols=5, cell=380):
     os.remove(tmp)
 
 
+PRESET_SETUP = """
+(o) => {
+  document.getElementById('panel').style.display = 'none';
+  document.getElementById('hint').style.display = 'none';
+  const s = document.getElementById('preset');
+  s.value = o.name; s.dispatchEvent(new Event('change', {bubbles: true}));
+  Object.assign(__ct.cfg, {demo: false, ghost: false, showBox: false, region: false,
+                           dims: false, ticks: true, temp: 70, rot: 110});
+  __ct.rebuild();
+  let d = 0;
+  for (const c of __ct.chunks)
+    for (let i = 1; i < c.pts.length; i++)
+      d += Math.hypot(c.pts[i].x - c.pts[i-1].x, c.pts[i].y - c.pts[i-1].y);
+  return {len: d, chunks: __ct.chunks.length, valid: __ct.rangeValid()};
+}
+"""
+
+
+def render_presets(out_png, tmpdir):
+    """Shoot every example-* preset exactly as the page ships it.
+
+    Reads the presets from index.html rather than designs.json, so the sheet can
+    never show a curve the dropdown does not actually produce.
+    """
+    os.makedirs(tmpdir, exist_ok=True)
+    shots, rows = [], []
+    with sync_playwright() as p:
+        b = p.chromium.launch()
+        pg = b.new_page(viewport={'width': 1400, 'height': 950}, device_scale_factor=1)
+        errs = []
+        pg.on('pageerror', lambda e: errs.append(str(e)))
+        pg.goto(PAGE); pg.wait_for_timeout(500)
+        names = pg.eval_on_selector_all(
+            '#preset option', "e => e.map(o => o.value).filter(v => v.startsWith('example-'))")
+        assert names, 'no example-* presets in the dropdown'
+        for n in names:
+            r = pg.evaluate(PRESET_SETUP, {'name': n})
+            assert r['valid'] and r['chunks'] == 130, (n, r)
+            pg.wait_for_timeout(140)
+            f = os.path.join(tmpdir, f'{n}.png')
+            pg.screenshot(path=f, clip={'x': 310, 'y': 0, 'width': 1080, 'height': 950})
+            shots.append((f, f'{n}  —  {r["len"]:.0f}\u2033 scale'))
+            rows.append((n, r['len']))
+        assert not errs, errs
+        b.close()
+    sheet([s for s, _ in shots], out_png, cols=4, cell=430,
+          captions=[c for _, c in shots])
+    for n, l in rows:
+        print(f'  {n}  {l:6.1f}"')
+    print(f'{len(rows)} presets -> {out_png}')
+
+
 if __name__ == '__main__':
+    if len(sys.argv) < 2:
+        sys.exit(__doc__.strip())
+    if sys.argv[1] == '--presets':
+        render_presets(sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else '/tmp/ct-presets')
+        sys.exit(0)
     data = json.load(open(sys.argv[1]))
     outdir = sys.argv[2]
     allshots = []

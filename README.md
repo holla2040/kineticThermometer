@@ -164,6 +164,16 @@ for the least input — so "make it long" and "ride the singularity" turn out to
 the same instruction. The search walked straight to the edge and sat on it. They
 are wonderful to watch and a perfect illustration of what to check for.
 
+![The eleven example presets, each showing the curve its indicator traces and
+the scale length in inches: spirals, loops, hooks and S-curves ranging from 91
+to 201 inches](contact-sheet.png)
+
+All eleven, as the dropdown draws them. Pick any one and watch it sweep — then
+watch pins C and D. Regenerate this sheet with
+`python3 tools/render_designs.py --presets contact-sheet.png`, which reads the
+presets out of `index.html` rather than a saved file, so it cannot show a curve
+the menu does not actually produce.
+
 ### What goes wrong, part one: the scale becomes unreadable
 
 ![Near dead centre the one-degree scale marks bunch up and then a single degree
