@@ -235,7 +235,11 @@
     </div>
 
     <details class="fold">
-      <summary>Actuator drive (24″–42″)</summary>
+      <summary>Actuator drive</summary>
+      <div class="row pair" id="actGen">
+        <div><label>Retracted ″</label><input type="number" inputmode="decimal" id="aLmin" value="24" step="0.5" min="6" max="60"></div>
+        <div><label>Stroke ″</label><input type="number" inputmode="decimal" id="aStroke" value="18" step="0.5" min="1" max="36"></div>
+      </div>
       <div class="row pair">
         <div><label>Excursion min ″</label><input type="number" inputmode="decimal" id="extMin" value="0" step="0.5" min="0" max="18"></div>
         <div><label>Excursion max ″</label><input type="number" inputmode="decimal" id="extMax" value="17" step="0.5" min="0" max="18"></div>
@@ -336,7 +340,7 @@
         box, dimensions, and view rotation in 10° steps.</dd>
       <dt>Bounding box</dt><dd>The footprint of everything — path, swept joints and all
         four mounts — <b>at the current view angle</b>.</dd>
-      <dt>Actuator drive</dt><dd>The excursion — the slice of the 18″ stroke actually
+      <dt>Actuator drive</dt><dd>The excursion — the slice of the actuator's stroke actually
         used — and the two assembly-branch flips. Crank radius and anchor position are
         set by dragging R and the anchor mount.</dd>
     </dl>
@@ -939,8 +943,28 @@
     });
     document.getElementById('s1c').checked=geo.s1<0;
     document.getElementById('s2c').checked=geo.s2<0;
+    syncActUI();
   }
   function fmtGeo(k,v){ return k==='anch'? Math.round(v)+'°' : (+v).toFixed(1)+'″'; }
+  // actuator-type controls; null-guarded per element like the sliders above
+  function syncActUI(){
+    const set=(id,v)=>{const el=document.getElementById(id); if(el) el.value=v; return el;};
+    const t=document.getElementById('actT'); if(t) t.value=String(geo.actT);
+    set('aLmin',geo.aLmin); set('aStroke',geo.aStroke); set('aClamp',geo.aClamp);
+    const g=document.getElementById('actGen'), j=document.getElementById('actJoy');
+    if(g) g.style.display = geo.actT===1 ? 'none' : '';
+    if(j) j.style.display = geo.actT===1 ? '' : 'none';
+    ['extMin','extMax'].forEach(id=>{
+      const el=document.getElementById(id); if(el) el.max=strokeOf();
+    });
+  }
+  // the selected actuator's stroke bounds the excursion; re-clamp after type/stroke edits
+  function clampExcursion(){
+    cfg.extMax=clamp(cfg.extMax,1,strokeOf());
+    cfg.extMin=clamp(cfg.extMin,0,cfg.extMax-1);
+    const a=document.getElementById('extMin'), b=document.getElementById('extMax');
+    if(a) a.value=cfg.extMin; if(b) b.value=cfg.extMax;
+  }
 
   GEOKEYS.forEach(k=>{
     const el=document.getElementById(k); if(!el) return;   // no sliders on mobile.html
@@ -1007,6 +1031,18 @@
     v=clamp(v,Math.max(0,cfg.extMin+1),strokeOf());
     cfg.extMax=v; e.target.value=v;
     rebuildPath();
+  });
+  // generic-actuator dimensions (fields exist on both pages)
+  [['aLmin',6,60],['aStroke',1,36]].forEach(([id,lo,hi])=>{
+    const el=document.getElementById(id); if(!el) return;
+    el.addEventListener('change',e=>{
+      let v=parseFloat(e.target.value);
+      if(!isFinite(v)) v=geo[id];
+      geo[id]=clamp(v,lo,hi); e.target.value=geo[id];
+      if(id==='aStroke') clampExcursion();
+      document.getElementById('preset').value='custom';
+      rebuildPath();
+    });
   });
   // export-only dimensions — no redraw needed
   [['hole',0.0625,2],['lwid',0.5,6]].forEach(([id,lo,hi])=>{
@@ -1353,7 +1389,7 @@
     L5:'Link L5', L6:'Rocker L6', ox:'Ground O6 x', oy:'Ground O6 y',
     cu2:'Indicator u', cv2:'Indicator v'};
   const COMPINFO={
-    act:    {label:'Linear actuator (24″–42″ pin-to-pin)', sliders:['rA','dA','anch']},
+    act:    {label:'Linear actuator', sliders:['rA','dA','anch']},
     anchorM:{label:'Actuator anchor mount',                sliders:['dA','anch']},
     crank:  {label:'Bell crank — the input link',          sliders:['L2','rA']},
     O2:     {label:'Bell-crank pivot O2',                  sliders:[], note:'Drag to shift the frame under everything else'},

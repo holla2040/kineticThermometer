@@ -591,6 +591,25 @@ with sync_playwright() as p:
     pg.keyboard.press("Space"); pg.wait_for_timeout(100)
     assert pg.evaluate("__ct.cfg.demo") is was, "Space did not toggle back"
     print(f"spacebar toggles the sweep both ways (from {was})")
+
+    # ---- 9. actuator types ----------------------------------------------
+    pg.reload(); pg.wait_for_timeout(700)
+    pg.evaluate("document.querySelectorAll('details').forEach(d => d.open = true)")
+    g = pg.evaluate("({actT:__ct.geo.actT, aLmin:__ct.geo.aLmin,"
+                    "  aStroke:__ct.geo.aStroke, aClamp:__ct.geo.aClamp})")
+    assert g == {"actT": 0, "aLmin": 24, "aStroke": 18, "aClamp": 23.23}, g
+    assert pg.evaluate("__ct.lenOf(0)") == 24, "generic retracted length"
+    assert pg.evaluate("__ct.strokeOf()") == 18, "generic stroke"
+    # generic dims are editable, and the stroke bounds the excursion
+    pg.fill("#aStroke", "12"); pg.dispatch_event("#aStroke", "change"); pg.wait_for_timeout(150)
+    assert pg.evaluate("__ct.cfg.extMax") == 12, pg.evaluate("__ct.cfg.extMax")
+    assert pg.input_value("#extMax") == "12", "the excursion field must follow the stroke"
+    assert pg.input_value("#preset") == "custom", "editing the actuator is a geometry edit"
+    pg.fill("#aLmin", "30"); pg.dispatch_event("#aLmin", "change"); pg.wait_for_timeout(150)
+    assert pg.evaluate("__ct.lenOf(0)") == 30, "retracted length must feed the drive length"
+    print("generic actuator fields: defaults 24/18, stroke re-clamps the excursion")
+    assert not errs, errs
+
     pg.screenshot(path=os.path.join(OUT,"panel.png"))
     b.close()
 print("\nALL CHECKS PASSED")
