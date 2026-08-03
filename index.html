@@ -165,6 +165,7 @@
     <label class="chk"><input type="checkbox" id="ghost" checked> Inner curves</label>
     <label class="chk"><input type="checkbox" id="showBox"> Bounding box</label>
     <label class="chk"><input type="checkbox" id="dims"> Dimensions</label>
+    <label class="chk"><input type="checkbox" id="region" checked> Drag regions</label>
   </div>
   <div class="row" style="margin-top:10px;">
     <label>Rotate view <b id="rotV">110°</b></label>
@@ -354,7 +355,7 @@
   };
 
   const geo=Object.assign({}, PRESETS.serpentine);
-  const cfg={temp:70, tmin:-20, tmax:110, demo:true, ticks:true, ghost:true, showBox:false, dims:false, speed:0.1, tdir:false, rot:110,
+  const cfg={temp:70, tmin:-20, tmax:110, demo:true, ticks:true, ghost:true, showBox:false, dims:false, region:true, speed:0.1, tdir:false, rot:110,
              extMin:0, extMax:15.5,    // used slice of the actuator stroke, in inches of extension
                                        // 15.5 is near the ceiling for the serpentine preset:
                                        // dA+rA=40.25, so past ~15.75″ the drive triangle won't close
@@ -1004,7 +1005,7 @@
     cfg.demo=false; document.getElementById('demo').checked=false;
     document.getElementById('tempV').textContent=Math.round(cfg.temp)+'°F';
   });
-  ['demo','ticks','ghost','showBox','dims'].forEach(k=>{
+  ['demo','ticks','ghost','showBox','dims','region'].forEach(k=>{
     const el=document.getElementById(k);
     el.addEventListener('change',()=>cfg[k]=el.checked);
   });
@@ -1129,7 +1130,7 @@
     document.getElementById('speedV').textContent=(+cfg.speed).toFixed(1)+'×';
     document.getElementById('rot').value=cfg.rot;
     document.getElementById('rotV').textContent=cfg.rot+'°';
-    ['demo','ticks','ghost','showBox','dims','tdir'].forEach(k=>document.getElementById(k).checked=!!cfg[k]);
+    ['demo','ticks','ghost','showBox','dims','region','tdir'].forEach(k=>document.getElementById(k).checked=!!cfg[k]);
   }
   // named designs live in one map under SAVESKEY
   const SAVESKEY='couplerThermometer.saves';
@@ -1164,7 +1165,7 @@
     cfg.extMin=clamp(cfg.extMin,0,strokeOf()-1); cfg.extMax=clamp(cfg.extMax,cfg.extMin+1,strokeOf());
     cfg.hole=clamp(cfg.hole,0.0625,2); cfg.lwid=clamp(cfg.lwid,0.5,6);
     cfg.rot=clamp(Math.round(cfg.rot/10)*10,0,360);
-    ['demo','ticks','ghost','showBox','dims','tdir'].forEach(k=>{ if(typeof data.cfg[k]==='boolean') cfg[k]=data.cfg[k]; });
+    ['demo','ticks','ghost','showBox','dims','region','tdir'].forEach(k=>{ if(typeof data.cfg[k]==='boolean') cfg[k]=data.cfg[k]; });
     if(data.preset) document.getElementById('preset').value=data.preset;
     syncUI();
     return true;
@@ -1393,10 +1394,10 @@
     if(undoStack.length>60) undoStack.shift();
     document.getElementById('undo').disabled=false;
   }
-  // A drag whose every move was fully rejected by the validity gate still pushed a
-  // snapshot on first movement — identical to the live state, so Undo would be a dead
-  // press. Called from drag-end (only when the drag actually moved) to pop it. Exact
-  // === is right: a full rejection restores the snapshot values bit-for-bit.
+  // A drag that moved but changed nothing (e.g. shoving a handle that is already
+  // pinned at its clamp limit) still pushed a snapshot on first movement — identical
+  // to the live state, so Undo would be a dead press. Called from drag-end (only when
+  // the drag actually moved) to pop it. Exact === is right: unchanged is bit-for-bit.
   function dropNoopUndo(){
     const s=undoStack[undoStack.length-1];
     if(!s) return;
@@ -1628,42 +1629,26 @@
     }
     return null;
   }
-  // applyDrag = mutateDrag + the validity gate + UI sync. The gate: a drag may never take
-  // a design that assembles across its full range (pathValid — the red warning) into one
-  // that doesn't. A blocked move slides to the edge: binary search between the pre-move
-  // snapshot and the rejected candidate, so the handle rides the wall instead of jumping
-  // past it. A design that is ALREADY red drags freely — the escape hatch for healing it.
+  // applyDrag = mutateDrag + UI sync. Dragging is deliberately UNRESTRICTED: a
+  // validity gate that pinned drags to range-assemblable designs was built and
+  // removed the next day (owner's call, 2026-08-04) — the overlay below SHOWS
+  // where a drop would break assembly, but you may drag into the red and back.
   function applyDrag(name,w){
-    const wasValid=pathValid, g0=Object.assign({},geo), lw0=lastWorld;
     const keys=mutateDrag(name,w);
-    if(!keys) return;                    // branch declined — same no-op as before the gate
-    if(wasValid && !rangeValid()){
-      const g1={}; keys.forEach(k=>g1[k]=geo[k]);
-      let lo=0, hi=1;
-      for(let i=0;i<9;i++){              // ~0.2% of one move's delta; anch deltas are tiny
-        const m=(lo+hi)/2;               // per move so a plain lerp is safe here
-        keys.forEach(k=>geo[k]=g0[k]+(g1[k]-g0[k])*m);
-        if(rangeValid()) lo=m; else hi=m;
-      }
-      keys.forEach(k=>geo[k]=g0[k]+(g1[k]-g0[k])*lo);   // lo=0 → g0 bit-for-bit
-      // O2 is delta-based: shrink its reference point by the accepted fraction too, or
-      // the rejected remainder of this move would be re-applied on the next move event
-      if(name==='O2'&&lw0) lastWorld={x:lw0.x+(w.x-lw0.x)*lo, y:lw0.y+(w.y-lw0.y)*lo};
-      if(lo===0) return;                 // fully blocked: geo untouched, no preset flip
-    }
-    updGeoUI(keys);
+    if(keys) updGeoUI(keys);
   }
   // ---------- drag feasibility overlay ----------
   // On grabbing a handle, the canvas is sampled on a coarse screen grid: would dropping
   // the cursor there leave a design that still assembles across the range? Bad cells get
-  // a faint tint, so the wall the gate enforces is visible before you hit it. Approximate
-  // on purpose (coarse grid, 25-sample validity) — the gate in applyDrag is the authority.
-  // Every handle except O2 derives its geometry ABSOLUTELY from the cursor position, so
-  // the region is fixed for the whole drag and one grab-time computation serves. O2 is
-  // delta-based — no overlay for it, but it IS still gated (see mutateDrag).
+  // a faint tint, so the no-go region is visible while you drag — advisory only, the
+  // drag itself is never restricted. Approximate on purpose (coarse grid, 25-sample
+  // validity); the red range warning is the authority. Switched by the "Drag regions"
+  // checkbox (cfg.region, default on). Every handle except O2 derives its geometry
+  // ABSOLUTELY from the cursor position, so the region is fixed for the whole drag and
+  // one grab-time computation serves. O2 is delta-based — it gets no overlay.
   let dragRegion=null;
   function startDragRegion(name){
-    if(!name||name==='O2'){ dragRegion=null; return; }
+    if(!name||name==='O2'||!cfg.region){ dragRegion=null; return; }
     const cell=Math.max(18, Math.ceil(Math.max(W,H)/48));   // ≤ ~48 cells across
     const cols=Math.ceil(W/cell), rows=Math.ceil(H/cell);
     dragRegion={name, cell, cols, rows, cells:new Int8Array(cols*rows), i:0,

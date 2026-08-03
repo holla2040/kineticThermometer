@@ -598,27 +598,21 @@ with sync_playwright() as p:
     pg.evaluate("__ct.setSheet(false)"); pg.wait_for_timeout(300)
     print("red range box in the sheet: tap resets")
 
-    # ---- 11c. drag validity gate + feasibility overlay on touch ---------
-    # Same shared-core gate as the desktop (tested in depth there); this checks
-    # the page-specific wiring: grab starts the overlay, release clears it, a
-    # second finger (pinch outranks the drag) clears it too, and a gated shove
-    # keeps the design assemblable.
+    # ---- 11c. drag feasibility overlay on touch -------------------------
+    # Dragging is free-form (the desktop suite covers that); this checks the
+    # page-specific wiring: grab starts the overlay, release clears it, a
+    # second finger (pinch outranks the drag) clears it too, and the "Drag
+    # regions" checkbox in the sheet suppresses it.
     pg.reload(); pg.wait_for_timeout(600); ready(pg)
-    gx0 = pg.evaluate("__ct.geo.gx")
     o4 = pg.evaluate("__ct.pivotScreen('O4')")
     ptr(pg, "pointerdown", 1, o4["x"], o4["y"])
     pg.wait_for_timeout(80)                       # a frame or two of the 5ms slices
     assert pg.evaluate("__ct.dragRegion !== null"), "grab must start the overlay"
     assert pg.evaluate("__ct.dragRegion.name") == "O4"
-    for i in range(1, 7):
-        ptr(pg, "pointermove", 1, o4["x"] + 10*i, o4["y"] + 4*i)
-        assert pg.evaluate("__ct.rangeValid()"), "mid-drag state must stay assemblable"
-    ptr(pg, "pointerup", 1, o4["x"] + 60, o4["y"] + 24)
-    pg.wait_for_timeout(200)
+    ptr(pg, "pointerup", 1, o4["x"], o4["y"])
+    pg.wait_for_timeout(150)
     assert pg.evaluate("__ct.dragRegion === null"), "release must clear the overlay"
-    assert pg.evaluate("__ct.rangeValid()"), "the released design must assemble"
     # a second finger outranks the drag and must clear the overlay with it
-    o4 = pg.evaluate("__ct.pivotScreen('O4')")
     ptr(pg, "pointerdown", 1, o4["x"], o4["y"])
     pg.wait_for_timeout(50)
     assert pg.evaluate("__ct.dragRegion !== null")
@@ -627,9 +621,18 @@ with sync_playwright() as p:
     ptr(pg, "pointerup", 1, o4["x"], o4["y"])
     ptr(pg, "pointerup", 2, o4["x"] + 80, o4["y"])
     pg.wait_for_timeout(200)
-    assert abs(pg.evaluate("__ct.geo.gx") - gx0) < 0.5, "gated shove stays near the wall"
-    print("gate on touch: overlay starts on grab, clears on release and on pinch; "
-          "the shoved design stays assemblable")
+    # the sheet checkbox suppresses it entirely
+    pg.evaluate("""() => { const el=document.getElementById('region');
+        el.checked=false; el.dispatchEvent(new Event('change')); }""")
+    ptr(pg, "pointerdown", 1, o4["x"], o4["y"])
+    pg.wait_for_timeout(150)
+    assert pg.evaluate("__ct.dragRegion === null"), "unchecked box must suppress the overlay"
+    ptr(pg, "pointerup", 1, o4["x"], o4["y"])
+    pg.evaluate("""() => { const el=document.getElementById('region');
+        el.checked=true; el.dispatchEvent(new Event('change')); }""")
+    pg.wait_for_timeout(100)
+    print("overlay on touch: starts on grab, clears on release and on pinch, "
+          "and the sheet checkbox suppresses it")
 
     # ---- 12. landscape turns the sheet into a left drawer ---------------
     pg.reload(); pg.wait_for_timeout(600); ready(pg)   # section 11 left a 12x zoom on

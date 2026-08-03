@@ -227,9 +227,8 @@ with sync_playwright() as p:
     depth0 = pg.evaluate("__ct.undoDepth()")   # preset switches push too, so measure deltas
     o4 = pg.evaluate("__ct.pivotScreen('O4')")
     # Drag DOWN-LEFT on screen: at serpentine defaults O4 has ~2" of range-valid travel
-    # that way, but only ~0.03" up-right — the validity gate stops the old +60,+25 drag
-    # at the wall almost immediately (measured 2026-08-03, and it is real: the chain
-    # toggles near the cold end). The gate test proper is further down.
+    # that way but only ~0.03" up-right, so this direction keeps the design green for
+    # the assertions that follow (dragging red is allowed — see section 12).
     pg.mouse.move(o4["x"], o4["y"]); pg.mouse.down()
     pg.mouse.move(o4["x"] - 60, o4["y"] - 25, steps=6)
     assert pg.evaluate("__ct.cfg.demo") is False, "the sweep must pause while dragging"
@@ -528,9 +527,8 @@ with sync_playwright() as p:
 
     # worldOf must invert the rotation, or grabbed pivots drift away from the cursor.
     # Measured MID-drag: releasing refits the view and would mask the result.
-    # Dragged handle is Q: its cu2/cv2 never affect assembly, so the validity gate
-    # cannot shorten the move — O4 would stop at the wall ~0.03" away (see the gate tests).
-    # 24,16px keeps the move inside Q's cu2/cv2 clamps at every rotation's fitted scale.
+    # Dragged handle is Q: its cu2/cv2 have generous clamps and never affect assembly.
+    # 24,16px keeps the move inside those clamps at every rotation's fitted scale.
     for a in (0, 90, 210):
         setrot(a)
         q0 = pg.evaluate("__ct.pivotScreen('Q')")
@@ -765,21 +763,12 @@ with sync_playwright() as p:
     assert c1 != c0, "dragging the tail must move the clamp"
     assert J["c0min"] <= c1 <= J["c0max"], c1
     assert pg.input_value("#aClamp") == str(c1), "the field must track the drag"
-    # yank it far off both ends. The clamp used to pin at its measured travel
-    # [c0min, c0max] — but BOTH extremes jam the linkage somewhere in the excursion
-    # (the driven length leaves the drive-triangle window), so the validity gate now
-    # pins the tail at the assembly wall just inside them. Prove the wall is real by
-    # nudging aClamp past it and watching the range fail.
+    # yank it far off both ends: the clamp pins at its measured travel
     q = pg.evaluate("__ct.pivotScreen('tail')")
     pg.mouse.move(q["x"], q["y"]); pg.mouse.down()
     pg.mouse.move(q["x"] - u["x"]*3000, q["y"] - u["y"]*3000, steps=6); pg.mouse.up()
     pg.wait_for_timeout(150)
-    cOut = pg.evaluate("__ct.geo.aClamp")
-    assert J["c0min"] < cOut < c1, "gate must stop the pulled-out tail before c0min"
-    assert pg.evaluate("__ct.rangeValid()"), "pulled-out stop must still assemble"
-    assert pg.evaluate("""() => { const g=__ct.geo, c=g.aClamp;
-        g.aClamp=c-0.2; const bad=!__ct.rangeValid(); g.aClamp=c; return bad; }"""), \
-        "0.2in past the pulled-out stop must fail somewhere in the range"
+    assert pg.evaluate("__ct.geo.aClamp") == J["c0min"], "tail pulled out -> clamp at c0min"
     q = pg.evaluate("__ct.pivotScreen('tail')")
     u = pg.evaluate("() => { const p=__ct.pose(__ct.cfg.temp);"      # the tube swung as c0
                     "  const g=__ct.actGeom(p,__ct.cfg.temp);"       # changed; re-read its
@@ -787,15 +776,9 @@ with sync_playwright() as p:
     pg.mouse.move(q["x"], q["y"]); pg.mouse.down()
     pg.mouse.move(q["x"] + u["x"]*3000, q["y"] + u["y"]*3000, steps=6); pg.mouse.up()
     pg.wait_for_timeout(150)
-    cIn = pg.evaluate("__ct.geo.aClamp")
-    assert cOut < cIn < J["c0max"], "gate must stop the pushed-in tail before c0max"
-    assert pg.evaluate("__ct.rangeValid()"), "pushed-in stop must still assemble"
-    assert pg.evaluate("""() => { const g=__ct.geo, c=g.aClamp;
-        g.aClamp=c+0.2; const bad=!__ct.rangeValid(); g.aClamp=c; return bad; }"""), \
-        "0.2in past the pushed-in stop must fail somewhere in the range"
+    assert pg.evaluate("__ct.geo.aClamp") == J["c0max"], "tail pushed in -> clamp at c0max"
     pg.keyboard.press("Control+z"); pg.keyboard.press("Control+z"); pg.keyboard.press("Control+z")
-    print(f"tail drag: slides c0 (got {c1}), gate pins at [{cOut:.2f}, {cIn:.2f}] "
-          f"inside the measured travel [{J['c0min']}, {J['c0max']}]")
+    print(f"tail drag: slides c0 (got {c1}), pins at [{J['c0min']}, {J['c0max']}]")
 
     # dragging the CLAMP BODY slides the clamp along a FIXED tube: aClamp and the
     # pivot mount (dA/anch) change together and the pose at this temperature does
@@ -911,10 +894,7 @@ with sync_playwright() as p:
         "sliding the connection must leave the pose frozen"
     assert abs(pg.evaluate("__ct.geo.dA") - 27.6388) > 1e-6, \
         "the anchor mount must have translated along with the connection"
-    # inward toward O2: the range gate stops the slide almost immediately at the
-    # serpentine defaults — dA+rA has only ~0.25in of slack over the excursion top
-    # and sliding in spends it (measured wall: rA ~12.2). The old "below the 8in
-    # floor" reach is no longer reachable from a valid design; assert the wall.
+    # inward close to O2: below the old 8in floor, still on the arm, still frozen
     qr = pg.evaluate("__ct.pivotScreen('R')")
     o2 = pg.evaluate("__ct.pivotScreen('O2')")
     pg.mouse.move(qr["x"], qr["y"]); pg.mouse.down()
@@ -922,19 +902,8 @@ with sync_playwright() as p:
     pg.mouse.up(); pg.wait_for_timeout(150)
     p2, l2 = crank_state()
     rA_in = pg.evaluate("__ct.geo.rA")
-    assert 2 < rA_in < rA_out, f"R must slide in until the gate's wall (got rA={rA_in})"
-    assert pg.evaluate("__ct.rangeValid()"), "the inward stop must still assemble"
-    assert pg.evaluate("""() => { const g=__ct.geo, s={rA:g.rA,dA:g.dA,anch:g.anch};
-        const p=__ct.pose(__ct.cfg.temp);
-        const ang=Math.atan2(p.R.y,p.R.x), ux=Math.cos(ang), uy=Math.sin(ang);
-        const ax=p.anchor.x-0.5*ux, ay=p.anchor.y-0.5*uy;      // slide 0.5in further in
-        g.rA=s.rA-0.5; g.dA=Math.hypot(ax,ay); g.anch=Math.atan2(ay,ax)*180/Math.PI;
-        const bad=!__ct.rangeValid(); Object.assign(g,s); return bad; }"""), \
-        "0.5in past the inward stop must fail somewhere in the range"
-    assert abs(l2 - l0) < 1e-9   # exact by construction: |R-anchor| is always lenOf(ext)
-    # the stop is a lerp toward the wall, so the frozen-pose invariant is only
-    # approximate there (polar vs cartesian interpolation of the anchor mount)
-    assert abs(p2["B"]["x"]-p0["B"]["x"]) < 2e-2 and abs(p2["B"]["y"]-p0["B"]["y"]) < 2e-2
+    assert rA_in < 8, f"R must slide in close to O2 (got rA={rA_in})"
+    assert abs(l2 - l0) < 1e-9 and abs(p2["B"]["x"]-p0["B"]["x"]) < 1e-9
     # sideways drags project onto the arm — nothing bends apart
     qr = pg.evaluate("__ct.pivotScreen('R')")
     pg.mouse.move(qr["x"], qr["y"]); pg.mouse.down()
@@ -944,61 +913,38 @@ with sync_playwright() as p:
     print(f"R slides along the arm (out to {rA_out:.1f}, in to {rA_in:.1f}); the actuator "
           f"rides along - pin-to-pin and pose frozen")
 
-    # ---- 12. drag validity gate + feasibility overlay ---------------------
-    # A drag may never take a valid design red (always-on; blocked moves slide to
-    # the wall). A design that is ALREADY red drags freely — that is how you heal
-    # one. Grabbing a handle tints the unreachable region until release.
+    # ---- 12. drag feasibility overlay; dragging itself is unrestricted ----
+    # Grabbing a handle tints the no-go region (where a drop would break assembly
+    # somewhere in the range) until release — advisory only. A validity gate that
+    # BLOCKED such drags was built and removed at the owner's request (2026-08-04):
+    # drags are free-form, into the red and back. "Drag regions" switches the tint.
     pg.reload(); pg.wait_for_timeout(700)
     pg.evaluate("__ct.cfg.demo=false; __ct.rebuild()")
     pg.wait_for_timeout(150)
 
-    # a) shove O4 hard toward the thin side (~0.03in of travel up-right in world):
-    #    every mid-drag state stays assemblable and the red box never appears
+    # a) free-form: shove O4 toward the thin side (~0.03in of legal travel) — the
+    #    handle must track the cursor PAST the wall and the design goes red;
+    #    dragging back to the preset spot heals it
     gx0, gy0 = pg.evaluate("__ct.geo.gx"), pg.evaluate("__ct.geo.gy")
-    depth0 = pg.evaluate("__ct.undoDepth()")
-    o4 = pg.evaluate("__ct.pivotScreen('O4')")
-    pg.mouse.move(o4["x"], o4["y"]); pg.mouse.down()
-    for i in range(1, 9):
-        pg.mouse.move(o4["x"] + 15*i, o4["y"] + 6*i)
-        assert pg.evaluate("__ct.rangeValid()"), "mid-drag state must stay assemblable"
-    pg.mouse.up(); pg.wait_for_timeout(200)
-    assert pg.eval_on_selector("#tmsg", "e => e.className") == "ok", \
-        "the red warning must never appear from a gated drag"
-    assert abs(pg.evaluate("__ct.geo.gx") - gx0) < 0.2, "O4 must stop ON the nearby wall"
-    assert pg.evaluate("__ct.undoDepth()") == depth0 + 1, "a partial drag = one undo level"
-    # the wall is real: 0.3in straight down (world +y) fails somewhere in the range
-    assert pg.evaluate(f"""() => {{ const g=__ct.geo, y=g.gy;
-        g.gy=y+0.3; const bad=!__ct.rangeValid(); g.gy=y; return bad; }}"""), \
-        "0.3in past the wall must fail somewhere in the range"
-
-    # b) a second identical shove starts ON the wall, accepts nothing, and must not
-    #    cost an undo level (the no-op snapshot is dropped at release)
-    wall_gx = pg.evaluate("__ct.geo.gx")
-    depth1 = pg.evaluate("__ct.undoDepth()")
     o4 = pg.evaluate("__ct.pivotScreen('O4')")
     pg.mouse.move(o4["x"], o4["y"]); pg.mouse.down()
     pg.mouse.move(o4["x"] + 90, o4["y"] + 36, steps=6)
     pg.mouse.up(); pg.wait_for_timeout(200)
-    assert pg.evaluate("__ct.geo.gx") == wall_gx, "fully blocked drag must not move geo"
-    assert pg.evaluate("__ct.undoDepth()") == depth1, "fully blocked drag must not push undo"
-    pg.keyboard.press("Control+z"); pg.wait_for_timeout(200)
-    assert abs(pg.evaluate("__ct.geo.gx") - gx0) < 1e-9, "undo restores the pre-drag geometry"
-
-    # c) escape hatch: an already-red design accepts drags and can be healed by one
-    pg.evaluate("__ct.geo.gy = __ct.geo.gy + 0.5; __ct.rebuild()")
-    pg.wait_for_timeout(150)
-    assert pg.eval_on_selector("#tmsg", "e => e.className") == "bad", "0.5in past the wall is red"
+    assert abs(pg.evaluate("__ct.geo.gx") - gx0) > 0.5, \
+        "free-form drag must track the cursor into invalid territory"
+    assert pg.eval_on_selector("#tmsg", "e => e.className") == "bad", \
+        "dragging past the wall must be allowed (and show red)"
     o4 = pg.evaluate("__ct.pivotScreen('O4')")
     tgt = pg.evaluate(f"__ct.screen({{x:{gx0},y:{gy0}}})")   # the known-good preset spot
     pg.mouse.move(o4["x"], o4["y"]); pg.mouse.down()
     pg.mouse.move(tgt["x"], tgt["y"], steps=8)
     pg.mouse.up(); pg.wait_for_timeout(200)
     assert pg.eval_on_selector("#tmsg", "e => e.className") == "ok", \
-        "dragging a red design back to a good spot must heal it"
+        "dragging back to a good spot must heal the design"
     assert abs(pg.evaluate("__ct.geo.gx") - gx0) < 0.1 and \
-           abs(pg.evaluate("__ct.geo.gy") - gy0) < 0.1, "the drag must track while red"
+           abs(pg.evaluate("__ct.geo.gy") - gy0) < 0.1
 
-    # d) overlay lifecycle: grab (no move) computes a region; release clears it.
+    # b) overlay lifecycle: grab (no move) computes a region; release clears it.
     #    O4's region is mixed; Q's is all good (cu2/cv2 cannot break assembly).
     o4 = pg.evaluate("__ct.pivotScreen('O4')")
     pg.mouse.move(o4["x"], o4["y"]); pg.mouse.down()
@@ -1019,17 +965,28 @@ with sync_playwright() as p:
     pg.mouse.up(); pg.wait_for_timeout(100)
     assert regq["b"] == 0 and regq["g"] > 0, f"Q can go anywhere; its region must be clean: {regq}"
 
-    # e) O2 is delta-based: no overlay — but the gate still covers it
+    # c) the "Drag regions" checkbox turns the overlay off (and back on), and it
+    #    is part of cfg, so Reset/undo carry it like every other display toggle
+    pg.uncheck("#region"); pg.wait_for_timeout(100)
+    assert pg.evaluate("__ct.cfg.region") is False
+    o4 = pg.evaluate("__ct.pivotScreen('O4')")
+    pg.mouse.move(o4["x"], o4["y"]); pg.mouse.down()
+    pg.wait_for_timeout(300)
+    assert pg.evaluate("__ct.dragRegion === null"), "unchecked box must suppress the overlay"
+    pg.mouse.up(); pg.wait_for_timeout(100)
+    pg.check("#region"); pg.wait_for_timeout(100)
+    pg.mouse.move(o4["x"], o4["y"]); pg.mouse.down()
+    pg.wait_for_function("__ct.dragRegion !== null", timeout=5000)
+    pg.mouse.up(); pg.wait_for_timeout(100)
+
+    # d) O2 is delta-based: never an overlay, region on or off
     o2 = pg.evaluate("__ct.pivotScreen('O2')")
     pg.mouse.move(o2["x"], o2["y"]); pg.mouse.down()
     pg.wait_for_timeout(200)
     assert pg.evaluate("__ct.dragRegion === null"), "O2 must not get an overlay"
-    pg.mouse.move(o2["x"] - 300, o2["y"] - 300, steps=8)
-    pg.mouse.up(); pg.wait_for_timeout(200)
-    assert pg.evaluate("__ct.rangeValid()"), "a huge O2 drag must still be gated valid"
-    assert pg.eval_on_selector("#tmsg", "e => e.className") == "ok"
-    print(f"validity gate: O4 pinned at the wall (region {reg['g']} good / {reg['b']} bad "
-          f"cells), red design healable by dragging, O2 gated without an overlay")
+    pg.mouse.up(); pg.wait_for_timeout(100)
+    print(f"drag regions: O4 overlay {reg['g']} good / {reg['b']} bad cells, Q clean, "
+          f"checkbox suppresses it, free-form drag goes red and heals")
     assert not errs, errs
 
     pg.screenshot(path=os.path.join(OUT,"panel.png"))

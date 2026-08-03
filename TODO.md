@@ -47,10 +47,6 @@ architecture in [CLAUDE.md](CLAUDE.md).
       is hardcoded in `buildPoints()`. Expose it as a field if it needs tuning
       against real stock.
 - [ ] The README GIF predates the bounding box and the current geometry.
-- [ ] The drag validity gate (2026-08-03) covers DRAGS only — sliders, typed
-  fields and the excursion fields can still turn the design red (the red box
-  and its click-to-reset stay for those paths). Gate them too if the owner
-  asks.
 - [ ] The feasibility overlay tints bad cells; a stroked boundary line
   (marching squares over the same grid) would be crisper if wanted.
       Regenerating costs another ~4.6 MB in git history, so it was left alone.
@@ -107,3 +103,9 @@ CLAUDE.md; listed here so they do not get "fixed" again.
   user dragging"). All 16 are set by dragging their pin. `?desktop=1` is the
   escape hatch, and `verify_mobile.py` asserts the exact id-set difference,
   so adding one back will fail the suite on purpose.
+- The drag VALIDITY GATE (built 2026-08-03, removed 2026-08-04). It blocked
+  any drag that would make the design unassemblable somewhere in the range,
+  sliding the handle to the wall with a binary search. The owner called the
+  restriction a mistake: drags are free-form, into the red and back. What
+  remains is the advisory "Drag regions" overlay (checkbox, default on).
+  Don't rebuild the hard block.
