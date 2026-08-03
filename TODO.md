@@ -11,15 +11,30 @@ architecture in [CLAUDE.md](CLAUDE.md).
       O4 16.11″). Either move O2 or accept the clearance and record why.
       The mount-to-mount *crossing* rule was dropped on 2026-07-19; only
       clearance still applies.
-- [ ] **Actuator headroom is ~0.25″.** `dA+rA = 40.25″` stops the drive
-      triangle closing past ~15.75″ of extension, and the excursion is 15.5″.
-      Re-run `tools/analyze_geometry.py` after touching `dA`, `rA` or the
-      excursion — this is the constraint most likely to be broken silently.
+- [ ] **Actuator headroom is ~0.25″ on the GENERIC actuator.** `dA+rA = 40.25″`
+      stops the drive triangle closing past ~15.75″ of extension, and the
+      excursion is 15.5″. Re-run `tools/analyze_geometry.py` after touching
+      `dA`, `rA` or the excursion — this is the constraint most likely to be
+      broken silently. **The Joyce type retires this**: at the as-modeled
+      clamp position (c0=23.23″) the full 16″ stroke closes with 0.45″ to
+      spare, asserted by `verify_export.py`. Decide which actuator the build
+      uses and re-tune the excursion accordingly.
+- [ ] **The joyce tube tail is not in the bounding box.** `buildBBox` bounds
+      the path, joint traces and mounts; up to ~24.7″ of actuator body sweeps
+      behind the clamp and isn't counted in the footprint readout. fitView
+      DOES include it (the drawing and the drag handle stay on screen) — this
+      is only about the measured w×h. Owner call on whether the envelope
+      should include the actuator.
 
 ## Fabrication document
 
 - [ ] Pivot hardware: bearing or bushing type, fastener sizes, retention.
-- [ ] Actuator mounting-triangle detail — anchor and rod-end brackets.
+- [ ] Actuator mounting-triangle detail — anchor and rod-end brackets. For the
+      Joyce: the clamp's pivot pin and rod clevis both take Ø0.472″ (12 mm)
+      pins; see the measured table in FABRICATION.md.
+- [ ] `JOYCE.side` (which side of the tube the pivot ear points, +1/-1 in the
+      code) is a mounting choice — confirm against the sculpture plane before
+      welding the clamp mount.
 - [ ] temp→extension calibration table for the controller. Mapping is linear
       within the excursion, optionally reversed:
       `ext = extMin + (T−Tmin)/(Tmax−Tmin) × (extMax−extMin)`.

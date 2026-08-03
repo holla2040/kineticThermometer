@@ -220,22 +220,30 @@ with sync_playwright() as p:
     print("fallback path: downloaded", d.suggested_filename)
     print("export msg:", pg.inner_text("#emsg"))
 
-    # ---- 4. drag: stops auto-cycle, is undoable --------------------------
+    # ---- 4. drag: pauses auto-cycle for its duration, is undoable --------
     pg.select_option("#preset", "serpentine"); pg.wait_for_timeout(200)
     pg.evaluate("__ct.cfg.demo = true; document.getElementById('demo').checked = true")
     before = pg.evaluate("__ct.geo.gx")
     depth0 = pg.evaluate("__ct.undoDepth()")   # preset switches push too, so measure deltas
     o4 = pg.evaluate("__ct.pivotScreen('O4')")
     pg.mouse.move(o4["x"], o4["y"]); pg.mouse.down()
-    pg.mouse.move(o4["x"] + 60, o4["y"] + 25, steps=6); pg.mouse.up()
-    pg.wait_for_timeout(200)
-    assert pg.evaluate("__ct.cfg.demo") is False, "drag must stop auto-cycle"
-    assert pg.is_checked("#demo") is False, "demo checkbox must follow"
+    pg.mouse.move(o4["x"] + 60, o4["y"] + 25, steps=6)
+    assert pg.evaluate("__ct.cfg.demo") is False, "the sweep must pause while dragging"
+    assert pg.is_checked("#demo") is False, "demo checkbox must follow the pause"
+    pg.mouse.up(); pg.wait_for_timeout(200)
+    assert pg.evaluate("__ct.cfg.demo") is True, "release must resume the sweep"
+    assert pg.is_checked("#demo") is True, "the checkbox must follow the resume"
     moved = pg.evaluate("__ct.geo.gx")
     assert abs(moved - before) > 0.5, (before, moved)
     assert pg.evaluate("!document.getElementById('undo').disabled"), "undo should be armed"
     assert pg.evaluate("__ct.undoDepth()") == depth0 + 1, "one drag = exactly one undo state"
-    print(f"drag O4: gx {before:.2f} -> {moved:.2f}, auto-cycle off, undo armed")
+    print(f"drag O4: gx {before:.2f} -> {moved:.2f}, sweep paused then resumed, undo armed")
+    # a grab while the sweep is OFF must not switch it on
+    pg.evaluate("__ct.cfg.demo = false; document.getElementById('demo').checked = false")
+    o4 = pg.evaluate("__ct.pivotScreen('O4')")
+    pg.mouse.move(o4["x"], o4["y"]); pg.mouse.down(); pg.mouse.up()
+    pg.wait_for_timeout(150)
+    assert pg.evaluate("__ct.cfg.demo") is False, "release must not start a stopped sweep"
 
     pg.click("#undo"); pg.wait_for_timeout(200)
     assert abs(pg.evaluate("__ct.geo.gx") - before) < 1e-9, "undo must restore gx"
@@ -591,6 +599,316 @@ with sync_playwright() as p:
     pg.keyboard.press("Space"); pg.wait_for_timeout(100)
     assert pg.evaluate("__ct.cfg.demo") is was, "Space did not toggle back"
     print(f"spacebar toggles the sweep both ways (from {was})")
+
+    # arrows: Up/Down step the actuator extension by 0.1in, Left/Right rotate 10deg
+    pg.evaluate("__ct.cfg.demo=false; document.getElementById('demo').checked=false;"
+                "__ct.cfg.temp=70")
+    e0 = pg.evaluate("__ct.extAt(__ct.cfg.temp)")
+    pg.keyboard.press("ArrowUp"); pg.wait_for_timeout(60)
+    e1 = pg.evaluate("__ct.extAt(__ct.cfg.temp)")
+    assert abs(e1 - (e0 + 0.1)) < 1e-6, (e0, e1)
+    pg.keyboard.press("ArrowDown"); pg.keyboard.press("ArrowDown"); pg.wait_for_timeout(60)
+    e2 = pg.evaluate("__ct.extAt(__ct.cfg.temp)")
+    assert abs(e2 - (e0 - 0.1)) < 1e-6, (e0, e2)
+    assert pg.evaluate("__ct.cfg.demo") is False, "stepping the reading keeps the sweep off"
+    rot0 = pg.evaluate("__ct.cfg.rot")
+    pg.keyboard.press("ArrowRight"); pg.wait_for_timeout(60)
+    assert pg.evaluate("__ct.cfg.rot") == (rot0 + 10) % 360
+    pg.keyboard.press("ArrowLeft"); pg.keyboard.press("ArrowLeft"); pg.wait_for_timeout(60)
+    assert pg.evaluate("__ct.cfg.rot") == (rot0 - 10) % 360
+    pg.keyboard.press("ArrowRight"); pg.wait_for_timeout(60)   # back where we started
+    # a focused field keeps its native arrow behavior
+    t0 = pg.evaluate("__ct.cfg.temp")
+    pg.focus("#sname"); pg.keyboard.press("ArrowUp"); pg.wait_for_timeout(60)
+    assert pg.evaluate("__ct.cfg.temp") == t0, "arrows must not steal focus from fields"
+    pg.eval_on_selector("#sname", "e => e.blur()")
+    print("arrows: Up/Down step the extension 0.1in, Left/Right rotate 10deg, fields keep theirs")
+
+    # ---- 9. actuator types ----------------------------------------------
+    pg.reload(); pg.wait_for_timeout(700)
+    pg.evaluate("document.querySelectorAll('details').forEach(d => d.open = true)")
+    g = pg.evaluate("({actT:__ct.geo.actT, aLmin:__ct.geo.aLmin,"
+                    "  aStroke:__ct.geo.aStroke, aClamp:__ct.geo.aClamp})")
+    assert g == {"actT": 0, "aLmin": 24, "aStroke": 18, "aClamp": 23.23}, g
+    assert pg.evaluate("__ct.lenOf(0)") == 24, "generic retracted length"
+    assert pg.evaluate("__ct.strokeOf()") == 18, "generic stroke"
+    # generic dims are editable, and the stroke bounds the excursion
+    pg.fill("#aStroke", "12"); pg.dispatch_event("#aStroke", "change"); pg.wait_for_timeout(150)
+    assert pg.evaluate("__ct.cfg.extMax") == 12, pg.evaluate("__ct.cfg.extMax")
+    assert pg.input_value("#extMax") == "12", "the excursion field must follow the stroke"
+    assert pg.input_value("#preset") == "custom", "editing the actuator is a geometry edit"
+    pg.fill("#aLmin", "30"); pg.dispatch_event("#aLmin", "change"); pg.wait_for_timeout(150)
+    assert pg.evaluate("__ct.lenOf(0)") == 30, "retracted length must feed the drive length"
+    print("generic actuator fields: defaults 24/18, stroke re-clamps the excursion")
+
+    # joyce type: fixed 16in stroke, offset-clamp driven length
+    pg.reload(); pg.wait_for_timeout(700)
+    pg.evaluate("document.querySelectorAll('details').forEach(d => d.open = true)")
+    pg.fill("#extMax", "17"); pg.dispatch_event("#extMax", "change"); pg.wait_for_timeout(100)
+    assert pg.evaluate("__ct.cfg.extMax") == 17
+    pg.select_option("#actT", "1"); pg.wait_for_timeout(200)
+    assert pg.evaluate("__ct.geo.actT") == 1
+    assert pg.evaluate("__ct.strokeOf()") == 16
+    assert pg.evaluate("__ct.cfg.extMax") == 16, "joyce's 16in stroke must re-clamp the excursion"
+    assert pg.input_value("#extMax") == "16", "the field must follow"
+    assert pg.input_value("#preset") == "custom"
+    vis = pg.evaluate("[document.getElementById('actGen').style.display,"
+                      " document.getElementById('actJoy').style.display]")
+    assert vis == ["none", ""], f"joyce shows the clamp field, hides retracted/stroke: {vis}"
+    # driven-length math checked END TO END: python recomputes R from raw geo
+    J = pg.evaluate("__ct.JOYCE")
+    gg = pg.evaluate("({dA:__ct.geo.dA, rA:__ct.geo.rA, anch:__ct.geo.anch, c0:__ct.geo.aClamp})")
+    cv = pg.evaluate("({tmin:__ct.cfg.tmin, tmax:__ct.cfg.tmax,"
+                     "  extMin:__ct.cfg.extMin, extMax:__ct.cfg.extMax})")
+    for t in (cv["tmin"], 40.0, cv["tmax"]):
+        f = min(max((t - cv["tmin"]) / (cv["tmax"] - cv["tmin"]), 0), 1)
+        ext = cv["extMin"] + f * (cv["extMax"] - cv["extMin"])
+        l = math.hypot(gg["c0"] + ext, J["off"])
+        th = math.radians(gg["anch"]) + math.acos(
+            (gg["dA"]**2 + gg["rA"]**2 - l*l) / (2*gg["dA"]*gg["rA"]))
+        R = pg.evaluate(f"__ct.pose({t}).R")
+        assert abs(R["x"] - gg["rA"]*math.cos(th)) < 1e-9, f"pose.R.x at {t}F"
+        assert abs(R["y"] - gg["rA"]*math.sin(th)) < 1e-9, f"pose.R.y at {t}F"
+    print("joyce: 16in stroke clamps excursion; sqrt((c0+ext)^2+off^2) drives pose.R exactly")
+
+    # the whole 16in stroke assembles on the serpentine at the as-modeled clamp position
+    assert pg.evaluate("__ct.cfg.extMin") == 0 and pg.evaluate("__ct.cfg.extMax") == 16
+    assert pg.eval_on_selector("#tmsg", "e => e.className") == "ok", \
+        "serpentine + joyce must assemble across the full 0-16in excursion"
+    print("serpentine assembles across the FULL 16in joyce stroke (generic ceiling was 15.5)")
+
+    # a named save round-trips the type and clamp position
+    pg.fill("#aClamp", "12.5"); pg.dispatch_event("#aClamp", "change"); pg.wait_for_timeout(100)
+    pg.fill("#sname", "joyce rt"); pg.click("#save"); pg.wait_for_timeout(150)
+    pg.select_option("#actT", "0"); pg.wait_for_timeout(150)
+    assert pg.evaluate("__ct.geo.actT") == 0
+    pg.select_option("#sload", "joyce rt"); pg.wait_for_timeout(200)
+    assert pg.evaluate("__ct.geo.actT") == 1, "load must restore the joyce type"
+    assert pg.evaluate("__ct.geo.aClamp") == 12.5, "load must restore the clamp position"
+    assert pg.input_value("#actT") == "1"
+    assert pg.evaluate("document.getElementById('actJoy').style.display") == ""
+    print("named save round-trips actT and aClamp")
+
+    # the points DXF labels the 4th mount as the clamp in joyce mode -- and it is
+    # still exactly the same 4 mounts, at the same datum coordinates
+    txt = pg.evaluate("__ct.buildPoints()")
+    assert "ACT_CLAMP" in txt and "ACT_ANCHOR" not in txt, "joyce mount label"
+    for lbl in ("O2", "O4_ROCKER1", "O6_ROCKER2", "ACT_CLAMP"):
+        assert txt.count(lbl) >= 1, f"missing mount {lbl}"
+    pg.select_option("#actT", "0"); pg.wait_for_timeout(150)
+    txt = pg.evaluate("__ct.buildPoints()")
+    assert "ACT_ANCHOR" in txt and "ACT_CLAMP" not in txt, "generic mount label"
+    pg.select_option("#actT", "1"); pg.wait_for_timeout(150)
+    # the joyce tube frame holds its invariants: R on the axis, pivot off it by JOYCE.off
+    inv = pg.evaluate("""() => {
+      const p = __ct.pose(__ct.cfg.temp), g = __ct.actGeom(p, __ct.cfg.temp);
+      const dRx = p.R.x - g.F.x, dRy = p.R.y - g.F.y;
+      const cross = dRx*g.u.y - dRy*g.u.x;             // R sits ON the tube axis
+      const dAx = p.anchor.x - g.F.x, dAy = p.anchor.y - g.F.y;
+      return {cross, off: Math.hypot(dAx, dAy),
+              tube: Math.hypot(g.front.x-g.rear.x, g.front.y-g.rear.y)};
+    }""")
+    assert abs(inv["cross"]) < 1e-9, f"rod pin off the tube axis: {inv['cross']}"
+    assert abs(inv["off"] - J["off"]) < 1e-9, f"pivot offset {inv['off']} != {J['off']}"
+    assert abs(inv["tube"] - J["tube"]) < 1e-9, "drawn tube length must be the real body"
+    print("joyce render frame: R on the axis, pivot 2.378in off it, tube at real length")
+
+    # a pre-actuator-types save must load as the original generic hardware
+    pg.evaluate("""() => {
+      const all = JSON.parse(localStorage.getItem('couplerThermometer.saves'));
+      const rec = all['joyce rt'];
+      delete rec.geo.actT; delete rec.geo.aLmin; delete rec.geo.aStroke; delete rec.geo.aClamp;
+      all['old style'] = rec;
+      localStorage.setItem('couplerThermometer.saves', JSON.stringify(all));
+    }""")
+    pg.reload(); pg.wait_for_timeout(700)
+    pg.evaluate("document.querySelectorAll('details').forEach(d => d.open = true)")
+    pg.select_option("#actT", "1"); pg.wait_for_timeout(100)   # page sits in joyce mode...
+    pg.select_option("#sload", "old style"); pg.wait_for_timeout(200)
+    g = pg.evaluate("({actT:__ct.geo.actT, aLmin:__ct.geo.aLmin,"
+                    "  aStroke:__ct.geo.aStroke, aClamp:__ct.geo.aClamp})")
+    assert g == {"actT": 0, "aLmin": 24, "aStroke": 18, "aClamp": 23.23}, \
+        f"an old save must mean the original generic actuator, got {g}"
+    print("pre-actuator-types saves load as generic 24/18 even from joyce mode")
+
+    # preset switch resets the type; undo brings joyce back (presetOf relabels)
+    pg.select_option("#actT", "1"); pg.wait_for_timeout(150)
+    assert pg.input_value("#preset") == "custom"
+    pg.select_option("#preset", "serpentine"); pg.wait_for_timeout(150)
+    assert pg.evaluate("__ct.geo.actT") == 0, "presets are defined on the generic actuator"
+    pg.click("#undo"); pg.wait_for_timeout(200)
+    assert pg.evaluate("__ct.geo.actT") == 1, "undo must restore the joyce type"
+    assert pg.input_value("#preset") == "custom", "presetOf must relabel the restored geometry"
+    print("preset switch resets to generic; undo restores joyce and the custom label")
+
+    # dragging the tube tail slides the clamp along the tube
+    pg.select_option("#actT", "1"); pg.wait_for_timeout(150)
+    pg.evaluate("__ct.cfg.demo=false; __ct.cfg.temp=70; __ct.rebuild()")
+    pg.wait_for_timeout(150)
+    c0 = pg.evaluate("__ct.geo.aClamp")
+    q = pg.evaluate("__ct.pivotScreen('tail')")
+    u = pg.evaluate("() => { const p=__ct.pose(__ct.cfg.temp);"
+                    "  const g=__ct.actGeom(p,__ct.cfg.temp);"
+                    "  return __ct.dir(g.u.x,g.u.y); }")
+    pg.mouse.move(q["x"], q["y"]); pg.mouse.down()
+    pg.mouse.move(q["x"] + u["x"]*50, q["y"] + u["y"]*50, steps=8); pg.mouse.up()
+    pg.wait_for_timeout(150)
+    J = pg.evaluate("__ct.JOYCE")
+    c1 = pg.evaluate("__ct.geo.aClamp")
+    assert c1 != c0, "dragging the tail must move the clamp"
+    assert J["c0min"] <= c1 <= J["c0max"], c1
+    assert pg.input_value("#aClamp") == str(c1), "the field must track the drag"
+    # yank it far off both ends: the clamp pins at its measured travel
+    q = pg.evaluate("__ct.pivotScreen('tail')")
+    pg.mouse.move(q["x"], q["y"]); pg.mouse.down()
+    pg.mouse.move(q["x"] - u["x"]*3000, q["y"] - u["y"]*3000, steps=6); pg.mouse.up()
+    pg.wait_for_timeout(150)
+    assert pg.evaluate("__ct.geo.aClamp") == J["c0min"], "tail pulled out -> clamp at c0min"
+    q = pg.evaluate("__ct.pivotScreen('tail')")
+    u = pg.evaluate("() => { const p=__ct.pose(__ct.cfg.temp);"      # the tube swung as c0
+                    "  const g=__ct.actGeom(p,__ct.cfg.temp);"       # changed; re-read its
+                    "  return __ct.dir(g.u.x,g.u.y); }")             # direction before pushing
+    pg.mouse.move(q["x"], q["y"]); pg.mouse.down()
+    pg.mouse.move(q["x"] + u["x"]*3000, q["y"] + u["y"]*3000, steps=6); pg.mouse.up()
+    pg.wait_for_timeout(150)
+    assert pg.evaluate("__ct.geo.aClamp") == J["c0max"], "tail pushed in -> clamp at c0max"
+    pg.keyboard.press("Control+z"); pg.keyboard.press("Control+z"); pg.keyboard.press("Control+z")
+    print(f"tail drag: slides c0 (got {c1}), pins at [{J['c0min']}, {J['c0max']}]")
+
+    # dragging the CLAMP BODY slides the clamp along a FIXED tube: aClamp and the
+    # pivot mount (dA/anch) change together and the pose at this temperature does
+    # not move at all. Dragging the PIVOT PIN moves the whole drive: dA/anch change,
+    # aClamp does not.
+    pg.reload(); pg.wait_for_timeout(700)
+    pg.evaluate("document.querySelectorAll('details').forEach(d => d.open = true)")
+    pg.select_option("#actT", "1"); pg.wait_for_timeout(200)
+    pg.evaluate("__ct.cfg.demo=false; __ct.cfg.temp=70; __ct.rebuild()")
+    pg.wait_for_timeout(150)
+    before = pg.evaluate("() => { const p=__ct.pose(__ct.cfg.temp);"
+                         "  return {R:p.R, A:p.anchor, c0:__ct.geo.aClamp,"
+                         "          dA:__ct.geo.dA, anch:__ct.geo.anch}; }")
+    u = pg.evaluate("() => { const p=__ct.pose(__ct.cfg.temp);"
+                    "  const g=__ct.actGeom(p,__ct.cfg.temp);"
+                    "  return __ct.dir(g.u.x,g.u.y); }")
+    q = pg.evaluate("__ct.pivotScreen('clamp')")
+    pg.mouse.move(q["x"], q["y"]); pg.mouse.down()
+    pg.mouse.move(q["x"] + u["x"]*40, q["y"] + u["y"]*40, steps=8); pg.mouse.up()
+    pg.wait_for_timeout(150)
+    after = pg.evaluate("() => { const p=__ct.pose(__ct.cfg.temp);"
+                        "  return {R:p.R, A:p.anchor, c0:__ct.geo.aClamp,"
+                        "          dA:__ct.geo.dA, anch:__ct.geo.anch}; }")
+    assert after["c0"] != before["c0"], "clamp-body drag must slide the clamp"
+    assert after["dA"] != before["dA"], "the pivot mount must ride along"
+    assert abs(after["R"]["x"] - before["R"]["x"]) < 1e-9 and \
+           abs(after["R"]["y"] - before["R"]["y"]) < 1e-9, \
+        "the tube (and the whole pose) must stay put while the clamp slides"
+    # the pivot moved parallel to the tube axis by exactly the slide distance
+    dxA, dyA = after["A"]["x"]-before["A"]["x"], after["A"]["y"]-before["A"]["y"]
+    uw = pg.evaluate("() => { const p=__ct.pose(__ct.cfg.temp);"
+                     "  return __ct.actGeom(p,__ct.cfg.temp).u; }")
+    slide = before["c0"] - after["c0"]
+    assert abs(dxA - slide*uw["x"]) < 1e-9 and abs(dyA - slide*uw["y"]) < 1e-9, \
+        "pivot displacement must equal the slide along the tube axis"
+    print(f"clamp-body drag: c0 {before['c0']} -> {after['c0']}, mount rode along, pose untouched")
+
+    # pivot-pin drag = move the whole drive: aClamp untouched
+    q = pg.evaluate("__ct.pivotScreen('anchor')")
+    pg.mouse.move(q["x"], q["y"]); pg.mouse.down()
+    pg.mouse.move(q["x"] + 25, q["y"] + 25, steps=6); pg.mouse.up()
+    pg.wait_for_timeout(150)
+    assert pg.evaluate("__ct.geo.aClamp") == after["c0"], \
+        "moving the pivot pin must NOT change the clamp position on the tube"
+    assert pg.evaluate("__ct.geo.dA") != after["dA"], "it must move the mount"
+    print("pivot-pin drag moves the whole drive; clamp position on the tube unchanged")
+
+    # the actuator CHOICE survives a reload -- the one deliberate localStorage
+    # exception. The geometry itself must still come up on the preset defaults.
+    pg.reload(); pg.wait_for_timeout(700)
+    assert pg.evaluate("__ct.geo.actT") == 1, "the joyce choice must survive a reload"
+    assert pg.input_value("#actT") == "1", "the select must come up on the stored choice"
+    assert abs(pg.evaluate("__ct.geo.L3") - 7.7705) < 1e-9, "geometry still opens on defaults"
+    assert pg.evaluate("__ct.geo.aClamp") == 23.23, "clamp position is NOT persisted"
+    pg.evaluate("document.querySelectorAll('details').forEach(d => d.open = true)")
+    pg.select_option("#actT", "0"); pg.wait_for_timeout(150)
+    pg.reload(); pg.wait_for_timeout(700)
+    assert pg.evaluate("__ct.geo.actT") == 0, "switching back to generic must persist too"
+    print("actuator choice persists across reloads; geometry still opens on defaults")
+
+    # ---- 10. the red range warning is a click-to-reset -------------------
+    pg.reload(); pg.wait_for_timeout(700)
+    depth0 = pg.evaluate("__ct.undoDepth()")
+    pg.evaluate("__ct.geo.dA = 40; __ct.geo.rA = 8; __ct.rebuild()")   # triangle can't close
+    pg.wait_for_timeout(150)
+    assert pg.eval_on_selector("#tmsg", "e => e.className") == "bad"
+    assert "Click here to reset" in pg.inner_text("#tmsg")
+    assert pg.eval_on_selector("#tmsg", "e => getComputedStyle(e).cursor") == "pointer"
+    pg.click("#tmsg"); pg.wait_for_timeout(200)
+    assert pg.eval_on_selector("#tmsg", "e => e.className") == "ok", "click must reset the design"
+    assert abs(pg.evaluate("__ct.geo.dA") - 27.6388) < 1e-9, "geometry back to the preset"
+    assert pg.evaluate("__ct.undoDepth()") == depth0 + 1, "the reset must be undoable"
+    pg.keyboard.press("Control+z"); pg.wait_for_timeout(200)
+    assert pg.evaluate("__ct.geo.dA") == 40, "undo must bring the broken state back"
+    pg.click("#tmsg"); pg.wait_for_timeout(200)   # reset again, then prove ok is inert
+    ok_dA = pg.evaluate("__ct.geo.dA")
+    depth1 = pg.evaluate("__ct.undoDepth()")
+    pg.click("#tmsg"); pg.wait_for_timeout(150)
+    assert pg.evaluate("__ct.geo.dA") == ok_dA and pg.evaluate("__ct.undoDepth()") == depth1, \
+        "clicking the GREEN box must do nothing"
+    print("red range box: click resets (undoably); green box is inert")
+
+    # ---- 11. R slides ALONG the crank arm; the actuator rides with it -----
+    # (a two-arm bell crank was tried and reverted: it read as the linkage
+    # splitting into a second four-bar. R stays collinear with B by design.)
+    # Sliding the connection keeps every length the same: the anchor mount
+    # translates with R, so pin-to-pin and the whole pose are frozen.
+    pg.reload(); pg.wait_for_timeout(700)
+    pg.evaluate("__ct.cfg.demo=false; __ct.cfg.temp=70; __ct.rebuild()")
+    pg.wait_for_timeout(150)
+
+    def crank_state():
+        p_ = pg.evaluate("__ct.pose(__ct.cfg.temp)")
+        cross = p_["R"]["x"]*p_["B"]["y"] - p_["R"]["y"]*p_["B"]["x"]
+        assert abs(cross) < 1e-9, f"R left the crank arm (cross={cross})"
+        l = math.hypot(p_["R"]["x"]-p_["anchor"]["x"], p_["R"]["y"]-p_["anchor"]["y"])
+        return p_, l
+
+    p0, l0 = crank_state()
+    o2 = pg.evaluate("__ct.pivotScreen('O2')")
+    qr = pg.evaluate("__ct.pivotScreen('R')")
+    dx, dy = qr["x"]-o2["x"], qr["y"]-o2["y"]
+    n = math.hypot(dx, dy); dx, dy = dx/n, dy/n
+    # outward past B (rA range is now 2-30)
+    pg.mouse.move(qr["x"], qr["y"]); pg.mouse.down()
+    pg.mouse.move(o2["x"] + dx*n*1.5, o2["y"] + dy*n*1.5, steps=8); pg.mouse.up()
+    pg.wait_for_timeout(150)
+    p1, l1 = crank_state()
+    rA_out = pg.evaluate("__ct.geo.rA")
+    assert rA_out > pg.evaluate("__ct.geo.L2"), "R must be able to pass beyond B"
+    assert abs(l1 - l0) < 1e-9, f"pin-to-pin must not change ({l0} -> {l1})"
+    assert abs(p1["B"]["x"]-p0["B"]["x"]) < 1e-9 and abs(p1["B"]["y"]-p0["B"]["y"]) < 1e-9, \
+        "sliding the connection must leave the pose frozen"
+    assert abs(pg.evaluate("__ct.geo.dA") - 27.6388) > 1e-6, \
+        "the anchor mount must have translated along with the connection"
+    # inward close to O2: below the old 8in floor, still on the arm, still frozen
+    qr = pg.evaluate("__ct.pivotScreen('R')")
+    o2 = pg.evaluate("__ct.pivotScreen('O2')")
+    pg.mouse.move(qr["x"], qr["y"]); pg.mouse.down()
+    pg.mouse.move(o2["x"]*0.6 + qr["x"]*0.4, o2["y"]*0.6 + qr["y"]*0.4, steps=8)
+    pg.mouse.up(); pg.wait_for_timeout(150)
+    p2, l2 = crank_state()
+    rA_in = pg.evaluate("__ct.geo.rA")
+    assert rA_in < 8, f"R must slide in close to O2 (got rA={rA_in})"
+    assert abs(l2 - l0) < 1e-9 and abs(p2["B"]["x"]-p0["B"]["x"]) < 1e-9
+    # sideways drags project onto the arm — nothing bends apart
+    qr = pg.evaluate("__ct.pivotScreen('R')")
+    pg.mouse.move(qr["x"], qr["y"]); pg.mouse.down()
+    pg.mouse.move(qr["x"] - dy*60, qr["y"] + dx*60, steps=6); pg.mouse.up()
+    pg.wait_for_timeout(150)
+    crank_state()
+    print(f"R slides along the arm (out to {rA_out:.1f}, in to {rA_in:.1f}); the actuator "
+          f"rides along - pin-to-pin and pose frozen")
+    assert not errs, errs
+
     pg.screenshot(path=os.path.join(OUT,"panel.png"))
     b.close()
 print("\nALL CHECKS PASSED")
