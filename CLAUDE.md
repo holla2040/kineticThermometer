@@ -415,11 +415,15 @@ Three things had to move into the core to make this work, and they matter:
   the point: rotate to the mounting angle and read what it occupies. The
   transform is split for this — `TXr()` takes an already-rotated point,
   `TX() = TXr(rotPt())` — and drawBBox uses TXr so it isn't rotated twice.
-- Settings persist to localStorage key `couplerThermometer.v2` (guarded
-  try/catch — degrades to in-memory where storage is blocked); every Save
-  writes it and it auto-restores on load. There is deliberately no manual
-  "clear auto-restore" button — the owner found it confusing next to the
-  named designs. Don't add one back.
+- **Nothing auto-restores on load** (the old `couplerThermometer.v2`
+  auto-restore slot was removed — see TODO.md "Settled"); the page opens on
+  the defaults and saved designs are opt-in, with ONE deliberate exception:
+  the **actuator choice** (`geo.actT`) persists under localStorage key
+  `couplerThermometer.actT` (owner request 2026-08-02 — it is hardware you
+  own, not a design edit). Written by `persistActT()` from `rebuildPath()`
+  (compare-and-write, so every path that can flip it — select, preset,
+  undo, Reset, load — is covered), restored at init, guarded try/catch like
+  all storage here. The geometry itself still opens on the preset defaults.
 - **Named designs**: type a name before Save and it also goes into the map
   under `couplerThermometer.saves`; the name field then clears and the
   "Load a saved design…" dropdown holds the record. Delete removes the

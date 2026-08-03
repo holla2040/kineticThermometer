@@ -370,6 +370,17 @@
   // dFront: rod clevis pin ahead of the tube front face at full retraction.
   const JOYCE={stroke:16, off:2.378, c0min:3.48, c0max:24.66, tube:27.913, tubeGrip:24.134,
                dFront:2.008, clampW:2.953, tubeDia:2.0, rodDia:1.378, pinDia:0.472, side:1};
+  // The actuator CHOICE persists across reloads — the one deliberate exception to
+  // "the page opens on defaults". It is hardware you own, not a design edit; the
+  // geometry itself still comes up on the preset. Guarded like all storage here.
+  const ACTKEY='couplerThermometer.actT';
+  try{ if(localStorage.getItem(ACTKEY)==='1') geo.actT=1; }catch(e){}
+  let actTStored=geo.actT;
+  function persistActT(){                // cheap no-op unless the choice changed;
+    if(geo.actT===actTStored) return;    // called from rebuildPath so every path that
+    actTStored=geo.actT;                 // can flip actT (select, preset, undo, reset,
+    try{ localStorage.setItem(ACTKEY,String(geo.actT)); }catch(e){}   // load) is covered
+  }
   let demoT=0.35;
   // Non-zero REPLACES cfg.speed for the sweep. mobile.html winds it up (DRAGSPEED) while
   // a handle is being dragged, so the whole excursion of the change plays out under your
@@ -467,6 +478,7 @@
     return out;
   }
   function rebuildPath(){
+    persistActT();
     pathQ=[]; pathJ={R:[],B:[],C:[],P:[],D:[]}; pathValid=true; pathWhy=null;
     for(let i=0;i<=NSAMP;i++){
       const t=cfg.tmin+(cfg.tmax-cfg.tmin)*i/NSAMP;

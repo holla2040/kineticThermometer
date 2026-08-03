@@ -796,6 +796,19 @@ with sync_playwright() as p:
         "moving the pivot pin must NOT change the clamp position on the tube"
     assert pg.evaluate("__ct.geo.dA") != after["dA"], "it must move the mount"
     print("pivot-pin drag moves the whole drive; clamp position on the tube unchanged")
+
+    # the actuator CHOICE survives a reload -- the one deliberate localStorage
+    # exception. The geometry itself must still come up on the preset defaults.
+    pg.reload(); pg.wait_for_timeout(700)
+    assert pg.evaluate("__ct.geo.actT") == 1, "the joyce choice must survive a reload"
+    assert pg.input_value("#actT") == "1", "the select must come up on the stored choice"
+    assert abs(pg.evaluate("__ct.geo.L3") - 7.7705) < 1e-9, "geometry still opens on defaults"
+    assert pg.evaluate("__ct.geo.aClamp") == 23.23, "clamp position is NOT persisted"
+    pg.evaluate("document.querySelectorAll('details').forEach(d => d.open = true)")
+    pg.select_option("#actT", "0"); pg.wait_for_timeout(150)
+    pg.reload(); pg.wait_for_timeout(700)
+    assert pg.evaluate("__ct.geo.actT") == 0, "switching back to generic must persist too"
+    print("actuator choice persists across reloads; geometry still opens on defaults")
     assert not errs, errs
 
     pg.screenshot(path=os.path.join(OUT,"panel.png"))
