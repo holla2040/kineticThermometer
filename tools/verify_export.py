@@ -657,6 +657,30 @@ with sync_playwright() as p:
     assert pg.evaluate("document.getElementById('actJoy').style.display") == ""
     print("named save round-trips actT and aClamp")
 
+    # the points DXF labels the 4th mount as the clamp in joyce mode -- and it is
+    # still exactly the same 4 mounts, at the same datum coordinates
+    txt = pg.evaluate("__ct.buildPoints()")
+    assert "ACT_CLAMP" in txt and "ACT_ANCHOR" not in txt, "joyce mount label"
+    for lbl in ("O2", "O4_ROCKER1", "O6_ROCKER2", "ACT_CLAMP"):
+        assert txt.count(lbl) >= 1, f"missing mount {lbl}"
+    pg.select_option("#actT", "0"); pg.wait_for_timeout(150)
+    txt = pg.evaluate("__ct.buildPoints()")
+    assert "ACT_ANCHOR" in txt and "ACT_CLAMP" not in txt, "generic mount label"
+    pg.select_option("#actT", "1"); pg.wait_for_timeout(150)
+    # the joyce tube frame holds its invariants: R on the axis, pivot off it by JOYCE.off
+    inv = pg.evaluate("""() => {
+      const p = __ct.pose(__ct.cfg.temp), g = __ct.actGeom(p, __ct.cfg.temp);
+      const dRx = p.R.x - g.F.x, dRy = p.R.y - g.F.y;
+      const cross = dRx*g.u.y - dRy*g.u.x;             // R sits ON the tube axis
+      const dAx = p.anchor.x - g.F.x, dAy = p.anchor.y - g.F.y;
+      return {cross, off: Math.hypot(dAx, dAy),
+              tube: Math.hypot(g.front.x-g.rear.x, g.front.y-g.rear.y)};
+    }""")
+    assert abs(inv["cross"]) < 1e-9, f"rod pin off the tube axis: {inv['cross']}"
+    assert abs(inv["off"] - J["off"]) < 1e-9, f"pivot offset {inv['off']} != {J['off']}"
+    assert abs(inv["tube"] - J["tube"]) < 1e-9, "drawn tube length must be the real body"
+    print("joyce render frame: R on the axis, pivot 2.378in off it, tube at real length")
+
     # a pre-actuator-types save must load as the original generic hardware
     pg.evaluate("""() => {
       const all = JSON.parse(localStorage.getItem('couplerThermometer.saves'));

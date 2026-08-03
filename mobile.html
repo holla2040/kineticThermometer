@@ -464,6 +464,21 @@
     return geo.actT===1 ? Math.hypot(geo.aClamp+ext, JOYCE.off) : geo.aLmin+ext;
   }
   function lenAt(t){ return lenOf(extAt(t)); }
+  // joyce tube frame at temperature t. The tube does NOT pass through the pivot — it
+  // runs parallel at JOYCE.off, so the tube direction is unit(pivot->R) rotated by
+  // side*atan2(off, c0+ext). F = the clamp's foot on the tube axis; front/rear = the
+  // tube body ends (rear tail sweeps as the mechanism moves). null for the generic type.
+  function actGeom(p,t){
+    if(geo.actT!==1||!p.anchor||!p.R) return null;
+    const ext=extAt(t), c=geo.aClamp+ext, l=Math.hypot(c,JOYCE.off);
+    const ex=(p.R.x-p.anchor.x)/l, ey=(p.R.y-p.anchor.y)/l;
+    const b=JOYCE.side*Math.atan2(JOYCE.off,c), cb=Math.cos(b), sb=Math.sin(b);
+    const ux=ex*cb-ey*sb, uy=ex*sb+ey*cb;
+    const F={x:p.R.x-c*ux, y:p.R.y-c*uy};
+    const front={x:p.R.x-(ext+JOYCE.dFront)*ux, y:p.R.y-(ext+JOYCE.dFront)*uy};
+    const rear={x:front.x-JOYCE.tube*ux, y:front.y-JOYCE.tube*uy};
+    return {u:{x:ux,y:uy}, F, front, rear};
+  }
   // full pose for a temperature; null pieces if unassemblable
   function pose(t){
     const l=lenAt(t);
@@ -799,19 +814,38 @@
 
   function drawMechanism(p){
     if(!p.B) return;
-    // actuator: anchor -> R
+    // actuator: anchor -> R (generic), or the joyce tube riding its offset clamp
     if(p.anchor&&p.R){
-      const A=TX(p.anchor), R=TX(p.R);
-      const dx=R.x-A.x, dy=R.y-A.y, L=Math.hypot(dx,dy), ux=dx/L, uy=dy/L;
-      const bl=Math.min(L*0.6, geo.aLmin*scale()*0.92);
+      const gj=actGeom(p,cfg.temp);
       ctx.lineCap='round';
-      ctx.beginPath(); ctx.moveTo(A.x,A.y); ctx.lineTo(A.x+ux*bl,A.y+uy*bl);
-      ctx.strokeStyle='#3a4453'; ctx.lineWidth=13; ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(A.x,A.y); ctx.lineTo(A.x+ux*bl,A.y+uy*bl);
-      ctx.strokeStyle='#556072'; ctx.lineWidth=8; ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(A.x+ux*bl,A.y+uy*bl); ctx.lineTo(R.x,R.y);
-      ctx.strokeStyle='#9fb0c3'; ctx.lineWidth=4; ctx.stroke();
-      ground(p.anchor);
+      if(gj){
+        // real-scale render: tube Ø2, rod Ø1.378, motor pod at the rear of the tube
+        const A=TX(p.anchor), R=TX(p.R), F=TX(gj.F), FR=TX(gj.front), RE=TX(gj.rear);
+        const s=scale(), tw=Math.max(5,JOYCE.tubeDia*s), rw=Math.max(3,JOYCE.rodDia*s);
+        const line=(a,b,w,c)=>{ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);
+                               ctx.strokeStyle=c;ctx.lineWidth=w;ctx.stroke();};
+        line(A,F,Math.max(4,0.5*s),'#54639b');                   // pivot bracket, off the axis
+        const podF={x:RE.x+(FR.x-RE.x)*(JOYCE.tube-JOYCE.tubeGrip)/JOYCE.tube,
+                    y:RE.y+(FR.y-RE.y)*(JOYCE.tube-JOYCE.tubeGrip)/JOYCE.tube};
+        line(RE,podF,tw*1.45,'#3a4453');                         // motor pod
+        line(RE,FR,tw,'#3a4453'); line(RE,FR,tw*0.6,'#556072');  // tube body
+        line(FR,R,rw,'#9fb0c3');                                 // extending rod
+        const su=rotDir(gj.u.x,gj.u.y), ch=JOYCE.clampW/2*s;     // world dir -> screen dir
+        const cl={x:F.x-su.x*ch, y:F.y-su.y*ch}, cr={x:F.x+su.x*ch, y:F.y+su.y*ch};
+        line(cl,cr,tw*1.3,'#54639b');                            // the sliding clamp
+        ground(p.anchor);
+      }else{
+        const A=TX(p.anchor), R=TX(p.R);
+        const dx=R.x-A.x, dy=R.y-A.y, L=Math.hypot(dx,dy), ux=dx/L, uy=dy/L;
+        const bl=Math.min(L*0.6, geo.aLmin*scale()*0.92);
+        ctx.beginPath(); ctx.moveTo(A.x,A.y); ctx.lineTo(A.x+ux*bl,A.y+uy*bl);
+        ctx.strokeStyle='#3a4453'; ctx.lineWidth=13; ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(A.x,A.y); ctx.lineTo(A.x+ux*bl,A.y+uy*bl);
+        ctx.strokeStyle='#556072'; ctx.lineWidth=8; ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(A.x+ux*bl,A.y+uy*bl); ctx.lineTo(R.x,R.y);
+        ctx.strokeStyle='#9fb0c3'; ctx.lineWidth=4; ctx.stroke();
+        ground(p.anchor);
+      }
     }
     // bell crank O2->outermost of R/B
     const armEnd = (geo.rA>geo.L2)? p.R : p.B;
@@ -1314,7 +1348,8 @@
       DXF.text('LABELS',{x:q.x+n.x*off-0.18, y:q.y+n.y*off-0.11}, 0.28, k.t+'F');
     });
     const p=pose(cfg.temp);
-    [['O2',p.O2],['O4_ROCKER1',p.O4],['O6_ROCKER2',p.O6],['ACT_ANCHOR',p.anchor]].forEach(m=>{
+    [['O2',p.O2],['O4_ROCKER1',p.O4],['O6_ROCKER2',p.O6],
+     [geo.actT===1?'ACT_CLAMP':'ACT_ANCHOR',p.anchor]].forEach(m=>{
       if(!m[1]) return;
       const q=f(m[1]);
       DXF.point('POINTS', q);
@@ -1417,8 +1452,10 @@
     L5:'Link L5', L6:'Rocker L6', ox:'Ground O6 x', oy:'Ground O6 y',
     cu2:'Indicator u', cv2:'Indicator v'};
   const COMPINFO={
-    act:    {label:'Linear actuator', sliders:['rA','dA','anch']},
-    anchorM:{label:'Actuator anchor mount',                sliders:['dA','anch']},
+    act:    {get label(){return geo.actT===1?'Joyce QS11940 (offset clamp, 16″ stroke)':'Linear actuator';},
+             sliders:['rA','dA','anch']},
+    anchorM:{get label(){return geo.actT===1?'Clamp pivot mount':'Actuator anchor mount';},
+             sliders:['dA','anch']},
     crank:  {label:'Bell crank — the input link',          sliders:['L2','rA']},
     O2:     {label:'Bell-crank pivot O2',                  sliders:[], note:'Drag to shift the frame under everything else'},
     plate1: {label:'Stage-1 coupler plate',                sliders:['L3','cu','cv']},
@@ -1441,7 +1478,8 @@
     const tri=(id,a,b,c)=>{ if(a&&b&&c) out.push({id,type:'tri',pts:[TX(a),TX(b),TX(c)]}); };
     pt('anchorM',p.anchor); pt('O2',p.O2); pt('O4',p.O4); pt('O6',p.O6); pt('Q',p.Q,13);
     pt('R',p.R,11); pt('B',p.B,11); pt('C',p.C,11); pt('P',p.P,11); pt('D',p.D,11);
-    seg('act',p.anchor,p.R);
+    const gj=actGeom(p,cfg.temp);
+    if(gj) seg('act',gj.rear,p.R); else seg('act',p.anchor,p.R);   // hover the real tube
     const armEnd=(geo.rA>geo.L2)?p.R:p.B;
     seg('crank',p.O2,armEnd);
     seg('rock1',p.O4,p.C); seg('rock2',p.O6,p.D);
@@ -1760,7 +1798,7 @@
     pick:pickPivot,                    // so a test can assert the touch hit radius directly
     undoDepth:()=>undoStack.length,
     get pathJ(){ return pathJ; },      // rebuildPath reassigns it, so read it live
-    lenOf, extAt, strokeOf, JOYCE,     // actuator model, for tests and analyze_geometry
+    lenOf, extAt, strokeOf, actGeom, JOYCE,   // actuator model, for tests and analyze_geometry
     get peek(){ return peekH; },       // mobile-only: what fitView keeps clear
     get sheetOpen(){ return sheet.classList.contains('open'); },
     setSheet,
