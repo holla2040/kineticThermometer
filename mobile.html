@@ -201,17 +201,17 @@
     <select id="preset">
       <option value="serpentine">Serpentine — S-curve with end hook</option>
       <option value="grandarc">Grand Arc — 5½ ft sweeping curve</option>
-      <option value="example-00">example-00 — 201&Prime; scale · 1 loop</option>
-      <option value="example-01">example-01 — 184&Prime; scale · 5 loops</option>
-      <option value="example-02">example-02 — 147&Prime; scale · 0 loops</option>
-      <option value="example-03">example-03 — 163&Prime; scale · 0 loops</option>
-      <option value="example-04">example-04 — 171&Prime; scale · 1 loop</option>
-      <option value="example-05">example-05 — 117&Prime; scale · 4 loops</option>
-      <option value="example-06">example-06 — 111&Prime; scale · 4 loops</option>
-      <option value="example-07">example-07 — 91&Prime; scale · 6 loops</option>
-      <option value="example-08">example-08 — 129&Prime; scale · 3 loops</option>
-      <option value="example-09">example-09 — 152&Prime; scale · 3 loops</option>
-      <option value="example-10">example-10 — 95&Prime; scale · 3 loops</option>
+      <option value="example-00">example-00 — 201&Prime; scale · 1 loop *</option>
+      <option value="example-01">example-01 — 184&Prime; scale · 5 loops *</option>
+      <option value="example-02">example-02 — 147&Prime; scale · 0 loops *</option>
+      <option value="example-03">example-03 — 163&Prime; scale · 0 loops *</option>
+      <option value="example-04">example-04 — 171&Prime; scale · 1 loop *</option>
+      <option value="example-05">example-05 — 117&Prime; scale · 4 loops *</option>
+      <option value="example-06">example-06 — 111&Prime; scale · 4 loops *</option>
+      <option value="example-07">example-07 — 91&Prime; scale · 6 loops *</option>
+      <option value="example-08">example-08 — 129&Prime; scale · 3 loops *</option>
+      <option value="example-09">example-09 — 152&Prime; scale · 3 loops *</option>
+      <option value="example-10">example-10 — 95&Prime; scale · 3 loops *</option>
       <option value="custom">Custom (your drag edits)</option>
     </select>
 
@@ -363,6 +363,32 @@
         used — and the two assembly-branch flips. Crank radius and anchor position are
         set by dragging R and the anchor mount.</dd>
     </dl>
+
+    <h3>Dead centre — what the * on the examples means</h3>
+    <p>Think of a bicycle pedal at the very top of its circle. Push straight down on it
+    and the crank does not turn: your foot, the crank and the axle are in one straight
+    line, so there is no leverage. Which way it eventually goes is decided by your other
+    foot, or a wobble — not by how hard you push.</p>
+    <p>A four-bar can reach that same pose. Finding a joint means intersecting two
+    circles, and two circles normally cross at <b>two</b> points — the two ways the
+    linkage can be assembled. <b>Dead centre</b> is where those circles only touch: the
+    two solutions merge into one, and two of the links lie in a straight line.</p>
+    <p>Two things happen there. The indicator gets very fast — near dead centre a hair of
+    actuator travel swings it a long way, which is why single-stepping the extension can
+    make the ring appear to skip instead of trace. And, worse, the linkage no longer has a
+    branch to stay on: coming out the far side it can settle onto the <b>mirror</b>
+    assembly and stay there, reading wrong until something knocks it back.</p>
+    <p>The measure is the <b>transmission angle</b> — the angle between the coupler and
+    the link it drives. 90° is ideal and mechanism design usually keeps it above about
+    40°; dead centre is 0°. Watch pins <b>C</b> and <b>D</b> while the sweep runs: each
+    turns <b style="color:#ef5350">red</b> whenever its own transmission angle drops
+    below 6°, so you can see exactly where in the temperature range a design is passing
+    through the singularity. Serpentine's closest approach is 7.7° and Grand Arc's is
+    33.9°, but <b>every example preset comes within 6°</b>, which is what the * marks.
+    They were found by a search that maximised scale length, and riding the singularity
+    is exactly where the coupler point travels furthest — so the search walked straight
+    to that edge. They are fascinating to watch and a warning about what to check before
+    committing to a geometry.</p>
 
     <h3>Saving and exporting</h3>
     <p>Type a name and press <b>Save</b> to keep a design in this browser; recall it from
@@ -834,9 +860,9 @@
     });
   }
 
-  function traceJoint(arr,col){
+  function traceRun(arr,i0,i1,col){
     ctx.beginPath(); let started=false;
-    for(let i=0;i<=NSAMP;i++){
+    for(let i=i0;i<=i1;i++){
       if(!arr[i]){started=false;continue;}
       const a=TX(arr[i]);
       started?ctx.lineTo(a.x,a.y):ctx.moveTo(a.x,a.y); started=true;
@@ -844,13 +870,35 @@
     ctx.strokeStyle=col; ctx.lineWidth=1.8;
     ctx.setLineDash([4,4]); ctx.stroke(); ctx.setLineDash([]);
   }
+  // `bad` is an optional per-sample flag. Where it is set the trace strokes in
+  // badCol, so the stretch of a joint's travel that passes through dead centre is
+  // marked on its own inner curve — visible even with the sweep parked elsewhere.
+  // Same-colour samples are stroked as ONE run so the dash pattern stays continuous
+  // and the red reads as a band rather than 140 separate stubs.
+  function traceJoint(arr,col,bad,badCol){
+    if(!bad){ traceRun(arr,0,NSAMP,col); return; }
+    let s=0, cur=!!(bad[0]||bad[1]);
+    for(let i=1;i<=NSAMP;i++){
+      const segBad=!!(bad[i-1]||bad[i]);
+      if(segBad!==cur){ traceRun(arr,s,i-1,cur?badCol:col); s=i-1; cur=segBad; }
+    }
+    traceRun(arr,s,NSAMP,cur?badCol:col);
+  }
   function drawGhost(){
     // dashed traces of every moving joint over the full temperature range
+    const O4={x:geo.gx,y:geo.gy}, O6={x:geo.ox,y:geo.oy};
+    const flag=(a,b,o)=>{
+      const f=[];
+      for(let i=0;i<=NSAMP;i++) f.push(!!(a[i]&&b[i]) && transAngle(a[i],b[i],o)<TAWARN);
+      return f;
+    };
     traceJoint(pathJ.R,'rgba(159,176,195,.55)');  // actuator rod end R (arc)
     traceJoint(pathJ.B,'rgba(217,164,65,.55)');   // crank pin B (arc)
-    traceJoint(pathJ.C,'rgba(139,148,166,.5)');   // rocker-1 pin C (arc)
+    traceJoint(pathJ.C,'rgba(139,148,166,.5)',    // rocker-1 pin C (arc)
+               flag(pathJ.C,pathJ.B,O4),TABADTRACE);
     traceJoint(pathJ.P,'rgba(79,209,197,.65)');   // stage-1 coupler point P
-    traceJoint(pathJ.D,'rgba(139,148,166,.5)');   // rocker-2 pin D (arc)
+    traceJoint(pathJ.D,'rgba(139,148,166,.5)',    // rocker-2 pin D (arc)
+               flag(pathJ.D,pathJ.P,O6),TABADTRACE);
   }
 
   function bar(a,b,w,c1,c2){
@@ -871,6 +919,19 @@
     const s=TX(p);
     ctx.beginPath(); ctx.arc(s.x,s.y,r,0,Math.PI*2);
     ctx.fillStyle=col; ctx.fill();
+  }
+  // Transmission angle at a joint: between the coupler arriving and the link it
+  // drives, folded into 0..90. 90 is ideal; 0 is DEAD CENTRE, where the two
+  // assembly branches merge — the indicator's speed is unbounded there and the
+  // linkage can come off on the mirror branch. C and D turn red below TAWARN so
+  // you can watch the mechanism walk into it as the sweep runs. See the help.
+  const TAWARN=6, TABAD='#ef5350', TABADTRACE='rgba(239,83,80,.8)';
+  function transAngle(a,b,o){
+    const ux=b.x-a.x, uy=b.y-a.y, vx=o.x-a.x, vy=o.y-a.y;
+    const n=Math.hypot(ux,uy)*Math.hypot(vx,vy);
+    if(n<1e-9) return 0;
+    const d=Math.acos(clamp((ux*vx+uy*vy)/n,-1,1))/DEG;
+    return Math.min(d,180-d);           // 170 deg is as collinear as 10 deg
   }
   function ground(p){
     const s=TX(p);
@@ -933,9 +994,9 @@
     ground(p.O2); ground(p.O4); ground(p.O6);
     if(p.R) joint(p.R,4.5,'#e8edf3');
     joint(p.B,4.5,'#e8edf3');
-    if(p.C) joint(p.C,4.5,'#e8edf3');
+    if(p.C) joint(p.C,4.5,transAngle(p.C,p.B,p.O4)<TAWARN?TABAD:'#e8edf3');
     if(p.P) joint(p.P,4.5,'#4fd1c5');
-    if(p.D) joint(p.D,4.5,'#e8edf3');
+    if(p.D) joint(p.D,4.5,transAngle(p.D,p.P,p.O6)<TAWARN?TABAD:'#e8edf3');
   }
 
   // ---------- dimension overlay ----------
@@ -1860,6 +1921,11 @@
   canvas.addEventListener('contextmenu',e=>e.preventDefault());
 
   canvas.addEventListener('pointerdown',e=>{
+    // Clicking the drawing hands the keyboard back to the page. Without this, a
+    // slider or button you touched a moment ago keeps focus, and Space and the
+    // arrow keys go to IT instead of the sweep and the extension -- both are gated
+    // on nothing being focused (see the keydown handler's inCtl test).
+    if(document.activeElement&&document.activeElement!==document.body) document.activeElement.blur();
     canvas.setPointerCapture(e.pointerId);
     pts.set(e.pointerId, screenOf(e));
     e.preventDefault();

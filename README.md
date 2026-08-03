@@ -65,6 +65,175 @@ where it opens out. That unevenness is the mechanism, not the recording.
   automatically.
 - `ik-demo.html` — unrelated earlier FABRIK inverse-kinematics demo.
 
+## Dead centre — the thing to understand before you build one
+
+If you only read one section of this repository before committing metal to a
+design of your own, make it this one. It is the difference between a sculpture
+that tells the time of day in degrees and one that quietly lies to you.
+
+You do not need any mechanism theory to follow it. Start with a bicycle.
+
+### The bicycle pedal
+
+![A crank at dead centre gets no turning force from a straight-down push: on the
+left the pedal is at the top of its circle and the push produces no rotation; on
+the right, a quarter turn later, the same push has full leverage](images/dead-centre-pedal.svg)
+
+When the pedal is at the very top, your foot, the crank and the axle are in one
+straight line. Push straight down as hard as you like — the crank does not turn.
+Which way it eventually goes is decided by your other foot, or by the bike
+rocking, not by how hard you pushed.
+
+That position has a name: **dead centre**. Any linkage can reach one, and this
+sculpture has two places where it can happen.
+
+### Why a linkage has the same problem
+
+The joints this mechanism has to *solve* for are found the same way: by
+crossing two circles. (The others come straight off the crank angle.)
+
+Take pin **D**. It has to sit exactly `L5` away from point P, and exactly `L6`
+away from the ground mount O6. Draw a circle of each radius and D is where they
+cross.
+
+![Two circles cross at two points, so there are two valid ways to assemble the
+linkage — the simulator picks one branch and stays on it](images/dead-centre-two-branches.svg)
+
+Two circles normally cross at **two** points. Both are perfectly valid
+assemblies — that is exactly what the "assembly branch" flips in the panel
+switch between. The mechanism sits on one and stays there.
+
+Now push the circles apart until they only just touch:
+
+![When the two circles are tangent the two solutions merge into one and the
+linkage is at dead centre, with both links in a straight line](images/dead-centre-tangent.svg)
+
+The two crossings have merged into one. The two links are in a straight line —
+the pedal at the top of its circle. Push a hair further and the circles do not
+touch at all: there is no solution, and the simulator simply stops drawing the
+linkage. That is the red "can't assemble" warning.
+
+### Where it can happen here
+
+![The drive chain from actuator through bell crank, B, C, P and D to the
+indicator Q, showing that only C and D are found by crossing circles](images/dead-centre-chain.svg)
+
+Motion runs one way along that chain, and only **C** and **D** are found by
+crossing circles. They are the only two joints that can go dead. The actuator's
+own triangle could in principle do the same, but the code already keeps a hard
+0.5″ margin there, so it never gets close.
+
+### The number that measures it: transmission angle
+
+![Transmission angle at a joint: 65 degrees is healthy, 22 degrees is getting
+tight, 4 degrees is effectively dead centre](images/dead-centre-angle.svg)
+
+At each of those joints, measure the angle between the link arriving and the
+link being driven. That is the **transmission angle**.
+
+- **90°** — perfect. All of the push goes into moving the next link.
+- **above ~40°** — normal engineering practice.
+- **near 0°** — dead centre. The links are in a line and the push goes nowhere.
+
+It is not a matter of opinion or of guessing which link pushes which. The angle
+is fixed by the triangle formed by the two link lengths and the distance between
+their anchor points, and it hits zero at exactly the moment the two circles stop
+crossing. Same event, two ways of describing it.
+
+### How the presets measure up
+
+![Where each preset falls on the transmission-angle scale: the eleven search
+examples all sit in the red zone below 6 degrees, serpentine reaches 7.7 degrees
+and Grand Arc 33.9 degrees](images/dead-centre-ruler.svg)
+
+Every preset in the dropdown, worst case across its whole temperature range.
+The jump column is what one press of the ↑ key does — 0.1″ of actuator travel:
+
+| preset | closest approach to dead centre | worst jump per 0.1″ of actuator |
+|---|--:|--:|
+| Grand Arc | 33.9° | 0.5″ |
+| Serpentine | 7.7° | 2.3″ |
+| `example-00` … `example-10` | **0.06° – 5.9°** | **4.6″ – 28.9″** |
+
+The two hand-tuned designs clear the danger zone. **All eleven `example-*`
+presets sit inside it** — which is why each is marked with a `*` in the menu.
+
+That is not bad luck. Those eleven came out of a numerical search told to make
+the scale as long as possible, and near dead centre the indicator sweeps furthest
+for the least input — so "make it long" and "ride the singularity" turn out to be
+the same instruction. The search walked straight to the edge and sat on it. They
+are wonderful to watch and a perfect illustration of what to check for.
+
+### What goes wrong, part one: the scale becomes unreadable
+
+![Near dead centre the one-degree scale marks bunch up and then a single degree
+jumps the whole width of the sculpture](images/dead-centre-scale.svg)
+
+The scale is engraved with a mark every degree. Near dead centre the indicator
+is moving enormously fast for a small actuator movement, so consecutive degrees
+land far apart — while just before it, they pile on top of each other.
+
+On one design the search found (kept out of the menu for this reason), a single
+degree moved the indicator **39.7 inches** — over three feet of engraved curve
+between two marks. Elsewhere on the same curve, the slowest degree moves it
+**0.195 inches**. That is a 200:1 spread across one temperature scale.
+
+### What goes wrong, part two: it can start reading the wrong temperature
+
+This is the serious one.
+
+![After a snap-through the linkage settles on the mirror branch, putting the
+indicator somewhere different for the same actuator position](images/dead-centre-branch-flip.svg)
+
+Remember that the two circles cross at two points, and the mechanism lives on
+one of them. At dead centre there is only one point — so nothing at all
+determines which branch it comes off onto. Momentum, friction, a gust of wind,
+gravity, or a few thousandths of slop in a pivot will decide.
+
+If it comes off on the other branch, your sculpture is now assembled the mirror
+way round. Nothing is bent. Nothing is broken. Nothing looks wrong. The
+indicator is simply in a different place for the same temperature, and it stays
+that way until something knocks it back through.
+
+Outdoors, unattended, with wind and thermal cycling, that is not a hypothetical.
+
+### What the simulator shows you
+
+Three things, all live:
+
+- **`*` in the preset menu** — this design passes within 6° of dead centre
+  somewhere in its range.
+- **Pins C and D turn red** whenever their own transmission angle drops below
+  6°. Run the sweep and watch: you will see exactly which joint, and at what
+  temperature, the mechanism is in trouble.
+- **The inner curve for that pin turns red too**, over the whole stretch of its
+  travel that is inside the danger zone — so you can see the size of the problem
+  with the animation paused. Turn on **Inner curves** in the Display section.
+
+Load `serpentine` and then `example-05` and watch the difference.
+
+### If you are building one of these
+
+1. **Watch the whole sweep before you cut anything.** Play the animation end to
+   end with Inner curves on. If a pin flashes red, the design has a dead centre
+   in its working range.
+2. **Aim for 40° minimum** transmission angle at both C and D. If you want a
+   number to design to, that is the one.
+3. **Treat anything under about 15° as a rebuild**, not a tweak. Dragging a
+   handle a little will not fix it — the geometry wants to be there.
+4. **A long scale is not automatically a good scale.** Length bought by
+   approaching a singularity comes with both failure modes above. The chosen
+   serpentine gives up length for a mechanism that behaves.
+5. **Check the mount clearances separately.** Dead centre is about the linkage;
+   whether a mount lands on top of the engraved path is a different question, and
+   `tools/analyze_geometry.py` reports it.
+6. **Remember the simulator is frictionless and has no slop.** It will happily
+   drive through a pose that real bearings, real wind loading and a real gearbox
+   would jam, stall or snap through.
+
+The eleven `example-*` presets are in the menu precisely so you can see all of
+this happening in something real, rather than take it on trust.
+
 ## Exporting for CAD
 
 Two buttons in the panel write ASCII DXF in inches:
