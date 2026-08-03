@@ -138,6 +138,17 @@
   <select id="preset">
     <option value="serpentine">Serpentine — S-curve with end hook</option>
     <option value="grandarc">Grand Arc — 5½ ft sweeping curve</option>
+    <option value="example-00">example-00 — 201&Prime; scale · 1 loop</option>
+    <option value="example-01">example-01 — 184&Prime; scale · 5 loops</option>
+    <option value="example-02">example-02 — 147&Prime; scale · 0 loops</option>
+    <option value="example-03">example-03 — 163&Prime; scale · 0 loops</option>
+    <option value="example-04">example-04 — 171&Prime; scale · 1 loop</option>
+    <option value="example-05">example-05 — 117&Prime; scale · 4 loops</option>
+    <option value="example-06">example-06 — 111&Prime; scale · 4 loops</option>
+    <option value="example-07">example-07 — 91&Prime; scale · 6 loops</option>
+    <option value="example-08">example-08 — 129&Prime; scale · 3 loops</option>
+    <option value="example-09">example-09 — 152&Prime; scale · 3 loops</option>
+    <option value="example-10">example-10 — 95&Prime; scale · 3 loops</option>
     <option value="custom">Custom (your slider edits)</option>
   </select>
 
@@ -351,7 +362,35 @@
                 actT:0, aLmin:24, aStroke:18, aClamp:23.23},
     grandarc:  {rA:20.8, dA:31.7, anch:166.7, gx:-3.8, gy:-0.1, L2:11.9, L3:11.8, L4:12.6,
                 cu:19.6, cv:-5.2, s1:-1, ox:7.7, oy:-7.6, L5:8.5, L6:13.5, cu2:19.3, cv2:-12.0, s2:-1,
-                actT:0, aLmin:24, aStroke:18, aClamp:23.23}
+                actT:0, aLmin:24, aStroke:18, aClamp:23.23},
+    // Gallery of what this mechanism can draw: tools/explore_designs.py searched
+    // 48M random geometries and hill-climbed the survivors; the owner picked these
+    // eleven on 2026-08-03. All are Joyce QS11940 designs. designs.json records them
+    // measured over the full 16" stroke, but the page opens at 0-15.5", so the scale
+    // length in each dropdown label is the SHORTER as-shipped figure - that is what
+    // you actually see when you pick one. example-02 differs the most (177 vs 147).
+    'example-00':{rA:13.6862, dA:26.3197, anch:32.7054, gx:-5.0877, gy:15.6793, L2:15.5377, L3:11.9424, L4:12.788, cu:5.7086, cv:13.383, s1:-1, ox:4.1476, oy:13.8867, L5:8.9757, L6:11.8046, cu2:18.6282, cv2:20.0, s2:-1,
+                actT:1, aLmin:24, aStroke:18, aClamp:23.23},
+    'example-01':{rA:15.4932, dA:38.1598, anch:144.8789, gx:-18.1115, gy:-5.3227, L2:14.8508, L3:21.7592, L4:17.7907, cu:2.9706, cv:-7.1124, s1:1, ox:-19.9585, oy:-2.095, L5:17.5036, L6:18.6007, cu2:22.857, cv2:-0.0898, s2:1,
+                actT:1, aLmin:24, aStroke:18, aClamp:23.23},
+    'example-02':{rA:12.8866, dA:27.1047, anch:117.2991, gx:-4.9223, gy:-16.9543, L2:13.479, L3:14.1873, L4:18.0213, cu:16.9657, cv:17.2505, s1:1, ox:-4.48, oy:4.4391, L5:13.8179, L6:18.9353, cu2:26.0, cv2:-20.0, s2:1,
+                actT:1, aLmin:24, aStroke:18, aClamp:23.23},
+    'example-03':{rA:14.8981, dA:24.9668, anch:-134.9563, gx:7.1219, gy:-16.905, L2:14.8194, L3:20.2755, L4:16.7605, cu:9.6638, cv:-5.1321, s1:-1, ox:-0.9906, oy:-9.9778, L5:8.0, L6:8.0, cu2:18.8409, cv2:20.0, s2:-1,
+                actT:1, aLmin:24, aStroke:18, aClamp:23.23},
+    'example-04':{rA:13.6674, dA:26.135, anch:-81.4571, gx:13.9404, gy:-2.7565, L2:13.3613, L3:12.4254, L4:11.8144, cu:18.4067, cv:-15.1979, s1:-1, ox:4.9397, oy:-13.0615, L5:10.0644, L6:15.8845, cu2:25.873, cv2:-20.0, s2:1,
+                actT:1, aLmin:24, aStroke:18, aClamp:23.23},
+    'example-05':{rA:11.9805, dA:32.8238, anch:-94.408, gx:16.8083, gy:-8.4691, L2:14.4413, L3:20.9403, L4:16.5613, cu:4.5508, cv:-12.3259, s1:1, ox:18.1617, oy:-20.4243, L5:9.825, L6:10.7804, cu2:25.4942, cv2:1.9171, s2:1,
+                actT:1, aLmin:24, aStroke:18, aClamp:23.23},
+    'example-06':{rA:14.1961, dA:26.0992, anch:-49.6436, gx:-1.6346, gy:9.9854, L2:13.6438, L3:14.1309, L4:17.6295, cu:3.5655, cv:-11.8478, s1:1, ox:-1.3205, oy:1.8207, L5:14.3054, L6:14.3583, cu2:16.404, cv2:15.6228, s2:-1,
+                actT:1, aLmin:24, aStroke:18, aClamp:23.23},
+    'example-07':{rA:12.513, dA:27.3418, anch:-107.3542, gx:10.7826, gy:-4.6276, L2:8.554, L3:16.1643, L4:12.9975, cu:24.0, cv:1.8083, s1:-1, ox:24.0488, oy:-13.8733, L5:20.5959, L6:16.3932, cu2:13.637, cv2:13.6883, s2:1,
+                actT:1, aLmin:24, aStroke:18, aClamp:23.23},
+    'example-08':{rA:12.571, dA:27.3392, anch:-59.0701, gx:5.2576, gy:6.6177, L2:8.9595, L3:11.0444, L4:11.5293, cu:9.9454, cv:14.3676, s1:-1, ox:-9.1917, oy:-5.695, L5:14.9007, L6:15.5999, cu2:2.1824, cv2:20.0, s2:-1,
+                actT:1, aLmin:24, aStroke:18, aClamp:23.23},
+    'example-09':{rA:12.3782, dA:32.0888, anch:110.6475, gx:-14.7075, gy:6.1144, L2:13.1051, L3:10.0, L4:12.786, cu:24.0, cv:-8.3759, s1:-1, ox:15.6807, oy:-5.8669, L5:14.4099, L6:17.9449, cu2:12.73, cv2:20.0, s2:1,
+                actT:1, aLmin:24, aStroke:18, aClamp:23.23},
+    'example-10':{rA:17.6748, dA:39.1019, anch:180.0, gx:-16.0043, gy:-13.7258, L2:16.0, L3:25.9998, L4:20.9765, cu:0.9598, cv:-10.4082, s1:-1, ox:-10.4178, oy:-0.7629, L5:10.0683, L6:10.8074, cu2:23.8808, cv2:1.4008, s2:1,
+                actT:1, aLmin:24, aStroke:18, aClamp:23.23}
   };
 
   const geo=Object.assign({}, PRESETS.serpentine);
