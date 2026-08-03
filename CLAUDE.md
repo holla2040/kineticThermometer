@@ -115,18 +115,39 @@ cv2=-12.0 s2=-1  → ~66″ of scale.
 - `example-00`…`example-10` (2026-08-03) — the length search. All eleven ride
   dead center, 0.06°–5.9° minimum transmission angle, marked `*` in the menu.
 - `clean-01`, `clean-03`, `clean-07` (2026-08-04) — the same search under
-  `--tamin 40`. 40.0°–50.1°, scale 64″–111″, mount clearance 2.89″–4.10″ (all
-  clear the 2.5″ rule the serpentine misses). No `*`. The run emitted ten; the
-  owner kept these three and cut the other seven as **variations on two shapes**
-  — `clean-00..04` were one theme and `clean-05..09` another, and 03 and 04 were
-  effectively the same curve. Numbering is deliberately non-contiguous: the names
-  are the ones the owner picked by, so don't renumber them.
+  `--tamin 40`. No `*`. The run emitted ten; the owner kept these three and cut
+  the other seven as **variations on two shapes** — `clean-00..04` were one theme
+  and `clean-05..09` another, and 03 and 04 were effectively the same curve.
+- `clean-10`…`clean-14` (2026-08-04, same day) — a second run that also had to
+  clear `--novelty 7.0` against all ten of the first run plus serpentine and
+  Grand Arc. At least 7.3 from every earlier shape and at least 11.0 from each
+  other, where the two original families sit 6.3 apart at their closest.
 
-The finding worth not re-deriving: **loops and cusps ARE the singularity.** Above
-40° there are none — not rare, absent. Every clean design is an arc, an open
-spiral or an S. Also: 94% of assemblable random geometries clear 10°, but 2.4M
-random trials produced ZERO at 40° with a 70″ scale, so the clean set exists only
-because the hill climb reaches it. Don't retry this with random sampling.
+All eight: 40.0°–50.1°, scale 55″–111″, mount clearance 2.89″–10.37″ (all clear
+the 2.5″ rule the serpentine misses). Numbering is deliberately non-contiguous —
+the names are the ones the owner picked by, so don't renumber them.
+
+**A wrong finding, recorded so it is not re-derived:** the first run's output made
+it look like loops and cusps simply ARE the singularity and vanish above 40°.
+They do not. That was an artefact of a length-maximising objective, which does not
+go looking in that part of the space. Under a novelty objective the same gate
+returns curves crossing themselves 1–3 times at 40°–53°. Loops cost even movement,
+not safety: the self-crossing designs are the slowest of the kept six at 0.074″ and
+0.092″/°F against clean-01's 0.50″ — but the ranges overlap, since loop-free
+clean-07 also stalls to 0.092″ (the serpentine itself is 0.075).
+
+Still true: 94% of assemblable random geometries clear 10°, but 2.4M random trials
+produced ZERO at 40° with a 70″ scale, so the clean set exists only because the
+hill climb reaches it. Don't retry this with random sampling.
+
+**Shape novelty** (`--avoid FILE --novelty N`) reduces each curve to its turning
+function — turn per unit arc at `SHAPE_K` equal-arc stations — and requires a
+minimum distance from every shape in the avoid file. Two things there are measured,
+not chosen: `SHAPE_K=10` is the coarsest resolution that still reproduces the
+owner's own two-family grouping (by K=12 within-family spread exceeds cross-family,
+because it starts measuring local wiggle), and the descriptor compares INCREMENTS
+because reversing a cumulative turning profile is not an isometry — that version's
+distance was asymmetric. `--selfcheck` asserts symmetry and the invariances.
 
 `tools/search_geometry.py` reproduces the constrained random search.
 `tools/verify_export.py` drives the page headless and checks the named-save

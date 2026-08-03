@@ -151,7 +151,7 @@ The jump column is what one press of the ↑ key does — 0.1″ of actuator tra
 
 | preset | closest approach to dead center | worst jump per 0.1″ of actuator |
 |---|--:|--:|
-| `clean-01`, `clean-03`, `clean-07` | **40.0° – 50.1°** | **0.7″ – 1.1″** |
+| the six `clean-*` | **40.0° – 50.1°** | **0.7″ – 1.9″** |
 | Grand Arc | 33.9° | 0.5″ |
 | Serpentine | 7.7° | 2.3″ |
 | `example-00` … `example-10` | **0.06° – 5.9°** | **4.6″ – 28.9″** |
@@ -183,12 +183,14 @@ something does? `tools/explore_designs.py` now measures the transmission angle a
 C and D exactly the way the page does, and `--tamin 40` refuses any design that
 drops below the 40° figure this section recommends.
 
-The run produced ten; the owner kept these three, as the rest were variations on
-two shapes rather than three distinct ones.
+That first run produced ten, of which the owner kept three: the other seven were
+variations on two shapes rather than seven designs. A second run then had to be
+told what "a different shape" means — see "Asking for a shape you have not seen
+yet" below — and produced the remaining three.
 
-![The three clean presets, each showing the curve its indicator traces and the
-scale length in inches: two open C-curves of 111 and 107 inches and a tighter
-64-inch curve](contact-sheet-clean.png)
+![The six clean presets, each showing the curve its indicator traces and the
+scale length in inches: open C-curves, nested arcs, an S and two self-crossing
+curves, from 61 to 111 inches](contact-sheet-clean.png)
 
     python3 tools/explore_designs.py --tamin 40 --minlen 60 --trials 3000000
     python3 tools/render_designs.py --presets contact-sheet-clean.png /tmp/x clean-
@@ -199,20 +201,61 @@ draw a curve you like and then go looking for a linkage that traces it:
 - **Healthy is common; healthy *and* long is not.** 94% of assemblable random
   geometries keep 10° or better. But in 2.4 million random trials, not one reached
   40° with even a 70″ scale. Every one of these ten had to be hill-climbed to.
-- **Above 40° the loops are simply gone.** Not rare — absent. Every `clean-*`
-  curve is an arc, an open spiral or an S; the crossings, cusps and tight hooks
-  that make `example-01` and `example-07` fun to watch are the *shape of the
-  singularity*, and they cannot be had at a safe transmission angle. The prettiest
-  curves in the menu are the ones you must not build.
+- **A length-maximising search finds no loops above 40°, but they are there.**
+  This is worth stating carefully, because the first run made it look like a law
+  of the mechanism: every design it returned at 40° was an arc or an open spiral,
+  and the obvious conclusion was that crossings and cusps simply *are* the
+  singularity and cannot be had safely. That conclusion was wrong. Told to hunt
+  for unfamiliar shapes instead of long ones, the same search returns curves that
+  cross themselves once to three times at 40°–53°. What loops actually cost is
+  even movement. Among the six kept, the two self-crossing designs sit at the
+  bottom of the range at 0.074″ and 0.092″ per °F, while the loop-free ones reach
+  0.50″ — though they overlap, since loop-free `clean-07` also stalls to 0.092″.
+  That is a readability problem, not a branch-flip problem, and 0.075″ is what the
+  owner's own serpentine manages.
 - **You pay for it in scale length, and less than you would think.** The kept
-  designs run 64″–111″ against the examples' 91″–201″, and get a linkage that
+  designs run 61″–111″ against the examples' 91″–201″, and get a linkage that
   cannot flip branch in a gust of wind.
 
 They come out ahead on the fabrication rule too, which was not asked of them:
-each keeps its mounts **2.89″–4.10″** off the engraved path, clearing the 2.5″
+each keeps its mounts **2.89″–10.37″** off the engraved path, clearing the 2.5″
 rule that the chosen serpentine misses at 2.06″. That is luck, not design — a
 design far from dead center is not automatically buildable, and `clean-*` still
 needs the rest of `analyze_geometry.py` run over it before anyone cuts metal.
+
+### Asking for a shape you have not seen yet
+
+Re-running the search with a new random seed does not give you a new shape. It
+gives you another member of whichever family the objective favours, which is how
+the first ten came back as two families wearing ten names. To get something
+genuinely different the search has to be told what "different" means.
+
+`--avoid designs.json --novelty N` does that. Each curve is reduced to its
+**turning function** — how much it has turned, measured at ten equal-arc-length
+stations, as turn per unit length. A circle is flat at 2π, a half circle flat at
+π, an S changes sign, a spiral sits high. Position, rotation and size fall out by
+construction, and mirroring the curve or running it backwards are folded out in
+the comparison, so nothing scores as novel for being the same curve hung the
+other way round. `--novelty` is then the distance, in radians, a design must keep
+from every shape in the avoid file.
+
+Two things about it are not adjustable to taste:
+
+- **Ten stations, not twenty.** The resolution was calibrated against the owner's
+  own grouping of the first ten designs into two families. At ten stations or
+  fewer the closest cross-family pair is further apart than the widest
+  within-family pair; by twelve that has inverted, because the measure has
+  started describing local wiggle rather than overall shape.
+- **It compares increments, not cumulative turning.** Running a cumulative
+  profile backwards mixes its endpoint value into every difference, so it is not
+  an isometry and the distance came out asymmetric — A was 1.9 from B while B was
+  2.7 from A. On increments both symmetries are isometries and the distance is a
+  metric. `--selfcheck` asserts it.
+
+For scale: the two original families sit 6.3 apart at their closest. The designs
+from the second run are at least 7.3 from every earlier shape, and at least 11.0
+from *each other* — further apart, pairwise, than the two families they were told
+to avoid.
 
 ### What goes wrong, part one: the scale becomes unreadable
 

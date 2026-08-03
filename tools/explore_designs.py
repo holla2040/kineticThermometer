@@ -193,6 +193,72 @@ def turn_stats(Qx, Qy):
     return pos, neg, rev, np.nan_to_num(wig)
 
 
+# Stations along the curve for the turning function. 10 is not a free parameter: it
+# is the coarsest resolution that still tells these curves apart, and finer stops
+# working. Measured against the owner's own grouping of the first ten clean designs
+# into two families on 2026-08-04 — at K<=10 the closest cross-family pair is further
+# apart than the widest within-family pair, and by K=12 that has inverted, because
+# the increments start describing local wiggle instead of overall shape.
+SHAPE_K = 10
+
+
+def turning_desc(Qx, Qy, K=SHAPE_K):
+    """(N,K-1) turn per unit normalised arc length, over K equal-arc stations.
+
+    This is what "overall shape" means here: a circle is flat at 2*pi, a half circle
+    flat at pi, an S changes sign, a spiral sits high. Translation, rotation and
+    scale drop out by construction — angles relative to the first, arc length
+    normalised to 1 — and mirror and traversal direction are handled in shape_dist.
+
+    It returns the INCREMENTS of the cumulative turning function, not the function
+    itself, and that is load-bearing rather than cosmetic. Reversing the traversal
+    maps the cumulative profile to theta(1) - theta(1-u), which mixes the endpoint
+    value into every difference and is therefore not an isometry: min-over-variants
+    came out asymmetric, so "A is 1.9 from B" and "B is 2.7 from A" were both true.
+    On increments the same two symmetries are negation and reversal, both isometries,
+    and the distance is a metric again.
+
+    Equal-arc stations are the point. Sampling in temperature instead would let the
+    slow end of a non-linear scale dominate the descriptor, and every design here
+    has a slow end.
+    """
+    dx, dy = np.diff(Qx, axis=1), np.diff(Qy, axis=1)
+    seg = np.hypot(dx, dy)
+    with np.errstate(invalid='ignore'):
+        th = np.unwrap(np.arctan2(dy, dx), axis=1)
+    th = th - th[:, :1]
+    # Station 0 must land at arc length 0, not at the end of the first segment, or
+    # the profile does not start at zero — and then rev() stops being an involution
+    # and shape_dist comes out asymmetric. Prepending the zero costs one column.
+    z = np.zeros((len(seg), 1))
+    cum = np.concatenate([z, np.cumsum(seg, axis=1)], axis=1)
+    th = np.concatenate([z, th], axis=1)
+    tgt = cum[:, -1:, None] * np.linspace(0, 1, K)[None, None, :]      # (N,1,K)
+    # batched searchsorted: numpy has no per-row version, and S*K is small here
+    hi = np.clip((cum[:, :, None] < tgt).sum(axis=1), 1, cum.shape[1] - 1)
+    lo = hi - 1
+    slo = np.take_along_axis(cum, lo, 1); shi = np.take_along_axis(cum, hi, 1)
+    tlo = np.take_along_axis(th, lo, 1); thi = np.take_along_axis(th, hi, 1)
+    with np.errstate(invalid='ignore', divide='ignore'):
+        w = np.where(shi - slo > 1e-12, (tgt[:, 0, :] - slo) / (shi - slo), 0.0)
+    prof = np.nan_to_num(tlo + w * (thi - tlo))
+    return np.diff(prof, axis=1) * (K - 1)
+
+
+def shape_dist(A, B):
+    """(N,M) RMS turning-function distance in radians, A candidates vs B references.
+
+    Minimised over the two symmetries that do not change what a curve looks like on
+    a wall: mirroring it (negates the turn) and running it the other way round
+    (reverses the order). Without those a design would score as novel for being the
+    same curve hung backwards. Both are isometries on this representation, so the
+    result is symmetric — the selfcheck asserts it.
+    """
+    variants = (A, -A, A[:, ::-1], -A[:, ::-1])
+    return np.stack([np.sqrt(((V[:, None, :] - B[None, :, :]) ** 2).mean(-1))
+                     for V in variants]).min(axis=0)
+
+
 def crossings(Qx, Qy, step=4):
     """(N,) self-intersections of each polyline, non-adjacent segments only."""
     x, y = Qx[:, ::step], Qy[:, ::step]
@@ -244,6 +310,9 @@ def measure(G, L, shape_from=None):
     Sx, Sy = (Qx, Qy) if k == 1 else (Qx[:, ::k], Qy[:, ::k])
     pos, neg, rev, wig = turn_stats(Sx, Sy)
     cr = crossings(Sx, Sy, step=max(1, Sx.shape[1] // 40))
+    # distance from the nearest shape we were told to avoid; 1e9 when told nothing
+    nov = (shape_dist(turning_desc(Sx, Sy), AVOID).min(axis=1)
+           if AVOID is not None else np.full(len(Qx), 1e9))
     diag = np.hypot(w, h)
     seg = np.hypot(np.diff(Qx, axis=1), np.diff(Qy, axis=1))
     with np.errstate(invalid='ignore', divide='ignore'):
@@ -261,6 +330,7 @@ def measure(G, L, shape_from=None):
         stall = rush = np.full(len(seg), np.nan)
     return dict(ok=ok, plen=plen, w=w, h=h, pos=pos, neg=neg, rev=rev, wig=wig,
                 cross=cr, dens=dens, clear=mount_clear(G, Qx, Qy), ta=np.nan_to_num(ta),
+                nov=np.nan_to_num(nov),
                 stall=stall, rush=rush,
                 segmin=np.nanmin(seg, 1), segmax=np.nanmax(seg, 1))
 
@@ -272,6 +342,8 @@ BAD = -1e9
 STALL_MIN = 0.15       # in/degF, the original search's min-segment rule
 STALL_GATE = 0.07      # what the owner's own tuned serpentine manages (0.075)
 TA_MIN = 0.0           # degrees; set from --tamin. 0 = the pre-2026-08-03 behaviour
+NOV_MIN = 0.0          # radians RMS of turning function; set from --novelty
+AVOID = None           # (M,SHAPE_K) descriptors of shapes to steer away from
 
 
 def _quality(m):
@@ -292,7 +364,8 @@ def _quality(m):
     # Below the gate the penalty is linear, so the climb still has a gradient home.
     return (3.0 * np.clip(m['clear'] - 2.5, -2.5, 1.0)
             + 300.0 * np.clip(stall - STALL_MIN, -0.15, 0.0)
-            + 60.0 * np.clip(m['ta'] - TA_MIN, -TA_MIN, 0.0))
+            + 60.0 * np.clip(m['ta'] - TA_MIN, -TA_MIN, 0.0)
+            + 400.0 * np.clip(m['nov'] - NOV_MIN, -NOV_MIN, 0.0))
 
 
 def score_length(m, maxw, maxh):
@@ -312,9 +385,17 @@ def score_character(m, maxw, maxh):
     stall = np.nan_to_num(m['stall'], nan=0.0)
     # staged, so the climb always has a gradient: reach 80", then clear the
     # character gates, then compete on how much personality there is
-    gate = (np.minimum(both / G_BOTH, 1) + np.minimum(m['rev'] / G_REV, 1)
-            + np.minimum(m['wig'] / G_WIG, 1) + np.minimum(stall / STALL_GATE, 1)
-            + (np.minimum(m['ta'] / TA_MIN, 1) if TA_MIN > 0 else 1.0))
+    # one term per active gate, each saturating at 1, so the staged score below has
+    # a gradient toward whichever gate is still short. Counted rather than hardcoded
+    # — the threshold was a magic 3.999 and silently went stale twice when gates
+    # were added.
+    terms = [np.minimum(both / G_BOTH, 1), np.minimum(m['rev'] / G_REV, 1),
+             np.minimum(m['wig'] / G_WIG, 1), np.minimum(stall / STALL_GATE, 1)]
+    if TA_MIN > 0:
+        terms.append(np.minimum(m['ta'] / TA_MIN, 1))
+    if NOV_MIN > 0:
+        terms.append(np.minimum(m['nov'] / NOV_MIN, 1))
+    gate = sum(terms)
     ch = (500.0
           + 14.0 * np.minimum(m['cross'], 6)
           + 8.0 * np.minimum(both, 4.0)
@@ -322,6 +403,7 @@ def score_character(m, maxw, maxh):
           + 10.0 * np.minimum(m['wig'], 3.0)
           + 6.0 * np.minimum(m['dens'], 4.0)
           + 2.0 * np.minimum(np.maximum(m['ta'] - TA_MIN, 0.0), 15.0)
+          + 30.0 * np.minimum(np.maximum(m['nov'] - NOV_MIN, 0.0), 1.5)
           + 0.02 * m['plen'])
     # _quality rides EVERY stage, not just the last. Left out of the length stage it
     # was a trapdoor: the climb maximised raw length with no dead-center pressure at
@@ -329,7 +411,7 @@ def score_character(m, maxw, maxh):
     # of a basin it had just spent 400 iterations digging.
     q = _quality(m)
     s = q + np.where(m['plen'] < MIN_LEN, m['plen'] - 1000.0,
-                     np.where(gate < 4.999, 100.0 * gate, ch))
+                     np.where(gate < len(terms) - 0.001, 100.0 * gate, ch))
     bad = ~m['ok'] | (m['w'] > maxw) | (m['h'] > maxh)
     return np.where(bad, BAD, s)
 
@@ -338,7 +420,7 @@ def gates_met(m):
     return ((m['plen'] >= MIN_LEN) & (np.minimum(m['pos'], m['neg']) >= G_BOTH)
             & (m['rev'] >= G_REV) & (m['wig'] >= G_WIG)
             & (np.nan_to_num(m['stall'], nan=0.0) >= STALL_GATE)
-            & (m['ta'] >= TA_MIN) & m['ok'])
+            & (m['ta'] >= TA_MIN) & (m['nov'] >= NOV_MIN) & m['ok'])
 
 
 # ---------- vectorized hill climb ----------
@@ -424,6 +506,20 @@ def from_dict(d):
 DENSE = 1301          # finalists are re-measured this finely; analyze_geometry.py's N
 
 
+def load_avoid(path):
+    """(M,SHAPE_K) turning-function descriptors from a file of designs.
+
+    Read at SHAPE_N, the same decimation measure() uses, or the reference profiles
+    would not be comparable to the candidates'.
+    """
+    d = json.load(open(path))
+    items = d if isinstance(d, list) else sum((d.get(k, []) for k in
+                                               ('longest', 'creative')), [])
+    G = np.array([from_dict(it['geo'] if 'geo' in it else it) for it in items])
+    Qx, Qy, _ = trace(G, drive_lengths(SHAPE_N))
+    return turning_desc(Qx, Qy)
+
+
 def finalize(g, maxw, maxh, tamin=0.0):
     """Re-measure one finalist densely. The 141-sample search length is a ~1%
     underestimate on a curvy path, and a design valid at 141 samples can still
@@ -493,7 +589,7 @@ def merge(paths, out, keep_long, keep_creative, maxw, maxh):
 
 def report(out):
     hdr = (f'{"":4}{"len":>7} {"loops":>5} {"rev":>4} {"wig":>5} {"both":>5} '
-           f'{"dens":>5}  envelope  clear  stall  {"trans":>5}  gen')
+           f'{"dens":>5}  envelope  clear  stall  {"trans":>5} {"novel":>6}  gen')
     for tag in ('baseline', 'longest', 'creative'):
         if tag not in out:
             continue
@@ -502,12 +598,13 @@ def report(out):
             m = d['metrics']
             print(f'  {i+1:>2}.{m["plen"]:7.1f} {m["cross"]:5.0f} {m["rev"]:4.0f} {m["wig"]:5.2f}'
                   f' {min(m["pos"], m["neg"]):5.2f} {m["dens"]:5.2f}  {m["w"]:4.1f}x{m["h"]:<4.1f}'
-                  f' {m["clear"]:5.2f}  {m["stall"]:5.3f}  {m["ta"]:5.1f}  '
+                  f' {m["clear"]:5.2f}  {m["stall"]:5.3f}  {m["ta"]:5.1f} '
+                  f'{min(m.get("nov", 0), 99):6.2f}  '
                   f'{"y" if m["generic_ok"] else "n"}')
 
 
 def main():
-    global TA_MIN, G_BOTH, G_REV, G_WIG, MIN_LEN
+    global TA_MIN, G_BOTH, G_REV, G_WIG, MIN_LEN, NOV_MIN, AVOID
     ap = argparse.ArgumentParser()
     ap.add_argument('--merge', nargs='+', help='pool several run outputs and re-select')
     ap.add_argument('--emit', type=int, default=0, help='candidates per set (0 = 5 and 10)')
@@ -529,6 +626,13 @@ def main():
                     help='scale-length floor for the character set. Buying length at a '
                          'high --tamin costs shape, so lower this to trade one for the '
                          'other; the serpentine is 82 inches and Grand Arc 56.')
+    ap.add_argument('--avoid', help='JSON list of designs whose SHAPE to steer away '
+                                    'from (a picked.json, or any file of {geo:...} '
+                                    'entries). Without it novelty is not scored.')
+    ap.add_argument('--novelty', type=float, default=0.0,
+                    help='how far, in radians RMS of turning function, a design must '
+                         'sit from every shape in --avoid. Within one family the '
+                         'spread is well under 1; 1.5 is a different family.')
     ap.add_argument('--character', type=float, nargs=3, metavar=('BOTH', 'REV', 'WIG'),
                     default=[G_BOTH, G_REV, G_WIG],
                     help='character gates: radians turned each way, curvature reversals, '
@@ -542,7 +646,12 @@ def main():
     nA, nB = (a.emit, a.emit) if a.emit else (5, 10)
     TA_MIN = a.tamin
     MIN_LEN = a.minlen
+    NOV_MIN = a.novelty
     G_BOTH, G_REV, G_WIG = a.character
+    if a.avoid:
+        AVOID = load_avoid(a.avoid)
+        print(f'avoiding the shapes of {len(AVOID)} designs, novelty gate '
+              f'{NOV_MIN:.2f} rad', flush=True)
 
     if a.merge:
         merge(a.merge, a.out, nA, nB, a.maxw, a.maxh)
@@ -663,6 +772,31 @@ def _selfcheck():
     assert abs(ang(0, -1)) < 1e-6, ang(0, -1)
     assert abs(ang(0, 1)) < 1e-6, ang(0, 1)
     assert abs(ang(math.cos(math.radians(30)), -math.sin(math.radians(30))) - 60) < 1e-9
+
+    # shape descriptor. A half circle, an S and a 1.5-turn spiral must read as three
+    # different shapes; the same half circle moved, turned, scaled, mirrored and run
+    # backwards must read as the same one, or "novel" would just mean "repositioned".
+    t = np.linspace(0, math.pi, 300)[None, :]
+    circ = (7 * np.cos(t), 7 * np.sin(t))
+    ess = (np.linspace(0, 10, 300)[None, :], 2 * np.sin(np.linspace(0, 2 * math.pi, 300))[None, :])
+    ts = np.linspace(0.6, 3 * math.pi, 300)[None, :]
+    spiral = (ts * np.cos(ts), ts * np.sin(ts))
+    dc, de, ds = (turning_desc(*c) for c in (circ, ess, spiral))
+    for a, b, nm in ((dc, de, 'circle/S'), (dc, ds, 'circle/spiral'), (de, ds, 'S/spiral')):
+        assert shape_dist(a, b)[0, 0] > 1.0, (nm, shape_dist(a, b)[0, 0])
+    # same curve: shifted +(30,-8), turned 50 deg, scaled 0.3, mirrored in y, reversed
+    a50, s = math.radians(50), 0.3
+    x, y = circ[0][:, ::-1] * s, -circ[1][:, ::-1] * s
+    same = (x * math.cos(a50) - y * math.sin(a50) + 30,
+            x * math.sin(a50) + y * math.cos(a50) - 8)
+    d = shape_dist(turning_desc(*same), dc)[0, 0]
+    assert d < 1e-9, f'same shape must read as distance 0, got {d}'
+    # and the measure must be symmetric, which it only is when every profile starts
+    # at zero — see the note in turning_desc
+    P = np.concatenate([dc, de, ds])
+    M = shape_dist(P, P)
+    assert np.abs(M - M.T).max() < 1e-9, f'shape_dist asymmetric by {np.abs(M-M.T).max()}'
+    assert np.abs(np.diag(M)).max() < 1e-9, 'a shape must be distance 0 from itself'
     print('selfcheck ok')
 
 
