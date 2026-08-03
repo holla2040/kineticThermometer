@@ -303,7 +303,7 @@ with sync_playwright() as p:
     assert pg.evaluate("__ct.pan.x") != 0, "still panned"
     pg.dblclick("canvas"); pg.wait_for_timeout(150)
     assert pg.evaluate("__ct.pan.x") == 0 and pg.evaluate("__ct.pan.y") == 0, "dblclick clears pan"
-    print("double-click recentred")
+    print("double-click recentered")
 
     # pan is clamped so the mechanism can't be lost off-screen
     pg.mouse.move(650, 400); pg.mouse.down(button="right")
@@ -330,7 +330,7 @@ with sync_playwright() as p:
     chunks = pg.evaluate("__ct.chunks.length")
     assert lay["PATH_DIVISIONS"] == chunks == 130, (lay, chunks)
 
-    # every division is centred on the path and exactly one path-width long
+    # every division is centered on the path and exactly one path-width long
     ticks = pg.evaluate("__ct.ticks.map(k=>({t:k.t,x:k.q.x,y:k.q.y,nx:k.nx,ny:k.ny,major:k.major}))")
     # chunk ends mapped through the same datum the export uses: rotate, then measure
     # from the box's lower-left corner with Y up
@@ -345,8 +345,8 @@ with sync_playwright() as p:
         assert abs(math.hypot(x1-x0, y1-y0) - 1.0) < 1e-5, "division = 1.0in path width"
         mx, my = (x0+x1)/2, (y0+y1)/2
         near = min(math.hypot(mx-q["x"], my-q["y"]) for q in ends)   # both in datum frame
-        assert near < 1e-5, f"division not centred on a chunk boundary (off {near})"
-    print(f"{lay['PATH_DIVISIONS']} divisions, each 1.00in and centred on a whole degree")
+        assert near < 1e-5, f"division not centered on a chunk boundary (off {near})"
+    print(f"{lay['PATH_DIVISIONS']} divisions, each 1.00in and centered on a whole degree")
 
     # a division must be perpendicular to the path. Reference tangent comes from pose()
     # either side of the boundary temperature -- independent of the drawing code, and
@@ -373,7 +373,7 @@ with sync_playwright() as p:
         c = abs(((x1-x0)*t["x"] + (y1-y0)*t["y"]) / (tl*dl))
         if c > worst: worst, worst_at = c, t["T"]
     # Tolerance, not zero: the renderer takes the tangent from the chunk's last sub-step
-    # (a backward difference), which diverges from a centred one exactly where the path
+    # (a backward difference), which diverges from a centered one exactly where the path
     # turns hardest -- there is a near-cusp at 43.5F where it slows to 0.111 in/degF and
     # swings 10 degrees. Typical divisions come in under 0.5 degrees.
     assert worst < 0.15, f"divisions must be perpendicular (worst |cos| {worst} at {worst_at}F)"

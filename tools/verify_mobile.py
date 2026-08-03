@@ -58,7 +58,7 @@ def drag(pg, x0, y0, x1, y1, steps=6, ptype="touch", id_=1):
 
 
 def pinch(pg, cx, cy, d0, d1, steps=8):
-    """Two fingers spreading (d1>d0) or closing, centred on cx,cy."""
+    """Two fingers spreading (d1>d0) or closing, centered on cx,cy."""
     ptr(pg, "pointerdown", 1, cx - d0 / 2, cy)
     ptr(pg, "pointerdown", 2, cx + d0 / 2, cy)
     for i in range(1, steps + 1):
@@ -378,17 +378,17 @@ with sync_playwright() as p:
     assert abs(px - 90) < 2 and abs(py + 60) < 2, f"one-finger pan gave ({px}, {py})"
     pinch(pg, 195, 300, 80, 200)                   # leave a zoom to clear as well
     double_tap(pg, 60, 640)
-    assert pg.evaluate("__ct.pan.x") == 0 and pg.evaluate("__ct.pan.y") == 0, "double-tap did not recentre"
+    assert pg.evaluate("__ct.pan.x") == 0 and pg.evaluate("__ct.pan.y") == 0, "double-tap did not recenter"
     assert pg.evaluate("__ct.zoom") == 1, "double-tap did not reset zoom"
-    print("one-finger pan works; double-tap recentres and resets zoom")
+    print("one-finger pan works; double-tap recenters and resets zoom")
 
     # a release that panned must NOT arm the double-tap, or every drag would
     pg.reload(); pg.wait_for_timeout(600); ready(pg)
     drag(pg, 40, 620, 140, 620, steps=5)
     ptr(pg, "pointerdown", 1, 60, 640); ptr(pg, "pointerup", 1, 60, 640)
-    assert pg.evaluate("__ct.pan.x") != 0, "one tap after a pan must not recentre"
+    assert pg.evaluate("__ct.pan.x") != 0, "one tap after a pan must not recenter"
     double_tap(pg, 60, 640)
-    assert pg.evaluate("__ct.pan.x") == 0, "two clean taps should still recentre"
+    assert pg.evaluate("__ct.pan.x") == 0, "two clean taps should still recenter"
     print("a dragged release does not count as the first tap")
 
     # ---- 8. the toolbar replaces the keyboard ---------------------------
@@ -415,8 +415,8 @@ with sync_playwright() as p:
     pg.evaluate("__ct.pan.x = 55; __ct.pan.y = -22; __ct.cfg.rot = 40")
     pg.tap("#tbFit"); pg.wait_for_timeout(120)
     assert pg.evaluate("__ct.pan.x") == 0 and pg.evaluate("__ct.zoom") == 1
-    assert pg.evaluate("__ct.cfg.rot") == 40, "recentre must leave the rotation alone"
-    print("toolbar play/pause resumes in place; recentre clears pan+zoom only")
+    assert pg.evaluate("__ct.cfg.rot") == 40, "recenter must leave the rotation alone"
+    print("toolbar play/pause resumes in place; recenter clears pan+zoom only")
 
     # ⟲ is the full reset: geometry, every setting, rotation, zoom and pan
     pg.reload(); pg.wait_for_timeout(600); ready(pg)

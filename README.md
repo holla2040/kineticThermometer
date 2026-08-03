@@ -28,7 +28,7 @@ where it opens out. That unevenness is the mechanism, not the recording.
   with Ctrl/Cmd+Z, pan by right-dragging, zoom with the mouse wheel, rotate
   the view in 10° steps, and save named designs in the browser. A dashed
   bounding box gives the piece's footprint in inches at the current view
-  angle. Double-click recentres and resets zoom. Exports DXF for Fusion —
+  angle. Double-click recenters and resets zoom. Exports DXF for Fusion —
   see below.
 - `mobile.html` — the same simulator, portrait-first for a phone, served at
   <https://holla2040.github.io/kineticThermometer/mobile.html>. A narrow
@@ -40,7 +40,7 @@ where it opens out. That unevenness is the mechanism, not the recording.
   length and mount position is set by dragging its pin, with the values you
   are changing shown at the top of the screen. Pinch to zoom (also how you
   get fine control — at 12× a pixel is about a hundredth of an inch),
-  double-tap to recentre, and use the ▶ ↶ ⌖ buttons in place of the
+  double-tap to recenter, and use the ▶ ↶ ⌖ buttons in place of the
   keyboard. Turned sideways the sheet becomes a left drawer. Presets, saves
   and both DXF exports all work. See "Two files, one core" below.
 - `tools/search_geometry.py` — the constrained random search that found
@@ -65,7 +65,7 @@ where it opens out. That unevenness is the mechanism, not the recording.
   automatically.
 - `ik-demo.html` — unrelated earlier FABRIK inverse-kinematics demo.
 
-## Dead centre — the thing to understand before you build one
+## Dead center — the thing to understand before you build one
 
 If you only read one section of this repository before committing metal to a
 design of your own, make it this one. It is the difference between a sculpture
@@ -75,16 +75,16 @@ You do not need any mechanism theory to follow it. Start with a bicycle.
 
 ### The bicycle pedal
 
-![A crank at dead centre gets no turning force from a straight-down push: on the
+![A crank at dead center gets no turning force from a straight-down push: on the
 left the pedal is at the top of its circle and the push produces no rotation; on
-the right, a quarter turn later, the same push has full leverage](images/dead-centre-pedal.svg)
+the right, a quarter turn later, the same push has full leverage](images/dead-center-pedal.svg)
 
 When the pedal is at the very top, your foot, the crank and the axle are in one
 straight line. Push straight down as hard as you like — the crank does not turn.
 Which way it eventually goes is decided by your other foot, or by the bike
 rocking, not by how hard you pushed.
 
-That position has a name: **dead centre**. Any linkage can reach one, and this
+That position has a name: **dead center**. Any linkage can reach one, and this
 sculpture has two places where it can happen.
 
 ### Why a linkage has the same problem
@@ -97,7 +97,7 @@ away from the ground mount O6. Draw a circle of each radius and D is where they
 cross.
 
 ![Two circles cross at two points, so there are two valid ways to assemble the
-linkage — the simulator picks one branch and stays on it](images/dead-centre-two-branches.svg)
+linkage — the simulator picks one branch and stays on it](images/dead-center-two-branches.svg)
 
 Two circles normally cross at **two** points. Both are perfectly valid
 assemblies — that is exactly what the "assembly branch" flips in the panel
@@ -106,7 +106,7 @@ switch between. The mechanism sits on one and stays there.
 Now push the circles apart until they only just touch:
 
 ![When the two circles are tangent the two solutions merge into one and the
-linkage is at dead centre, with both links in a straight line](images/dead-centre-tangent.svg)
+linkage is at dead center, with both links in a straight line](images/dead-center-tangent.svg)
 
 The two crossings have merged into one. The two links are in a straight line —
 the pedal at the top of its circle. Push a hair further and the circles do not
@@ -116,7 +116,7 @@ linkage. That is the red "can't assemble" warning.
 ### Where it can happen here
 
 ![The drive chain from actuator through bell crank, B, C, P and D to the
-indicator Q, showing that only C and D are found by crossing circles](images/dead-centre-chain.svg)
+indicator Q, showing that only C and D are found by crossing circles](images/dead-center-chain.svg)
 
 Motion runs one way along that chain, and only **C** and **D** are found by
 crossing circles. They are the only two joints that can go dead. The actuator's
@@ -126,14 +126,14 @@ own triangle could in principle do the same, but the code already keeps a hard
 ### The number that measures it: transmission angle
 
 ![Transmission angle at a joint: 65 degrees is healthy, 22 degrees is getting
-tight, 4 degrees is effectively dead centre](images/dead-centre-angle.svg)
+tight, 4 degrees is effectively dead center](images/dead-center-angle.svg)
 
 At each of those joints, measure the angle between the link arriving and the
 link being driven. That is the **transmission angle**.
 
 - **90°** — perfect. All of the push goes into moving the next link.
 - **above ~40°** — normal engineering practice.
-- **near 0°** — dead centre. The links are in a line and the push goes nowhere.
+- **near 0°** — dead center. The links are in a line and the push goes nowhere.
 
 It is not a matter of opinion or of guessing which link pushes which. The angle
 is fixed by the triangle formed by the two link lengths and the distance between
@@ -144,12 +144,12 @@ crossing. Same event, two ways of describing it.
 
 ![Where each preset falls on the transmission-angle scale: the eleven search
 examples all sit in the red zone below 6 degrees, serpentine reaches 7.7 degrees
-and Grand Arc 33.9 degrees](images/dead-centre-ruler.svg)
+and Grand Arc 33.9 degrees](images/dead-center-ruler.svg)
 
 Every preset in the dropdown, worst case across its whole temperature range.
 The jump column is what one press of the ↑ key does — 0.1″ of actuator travel:
 
-| preset | closest approach to dead centre | worst jump per 0.1″ of actuator |
+| preset | closest approach to dead center | worst jump per 0.1″ of actuator |
 |---|--:|--:|
 | Grand Arc | 33.9° | 0.5″ |
 | Serpentine | 7.7° | 2.3″ |
@@ -159,7 +159,7 @@ The two hand-tuned designs clear the danger zone. **All eleven `example-*`
 presets sit inside it** — which is why each is marked with a `*` in the menu.
 
 That is not bad luck. Those eleven came out of a numerical search told to make
-the scale as long as possible, and near dead centre the indicator sweeps furthest
+the scale as long as possible, and near dead center the indicator sweeps furthest
 for the least input — so "make it long" and "ride the singularity" turn out to be
 the same instruction. The search walked straight to the edge and sat on it. They
 are wonderful to watch and a perfect illustration of what to check for.
@@ -176,10 +176,10 @@ the menu does not actually produce.
 
 ### What goes wrong, part one: the scale becomes unreadable
 
-![Near dead centre the one-degree scale marks bunch up and then a single degree
-jumps the whole width of the sculpture](images/dead-centre-scale.svg)
+![Near dead center the one-degree scale marks bunch up and then a single degree
+jumps the whole width of the sculpture](images/dead-center-scale.svg)
 
-The scale is engraved with a mark every degree. Near dead centre the indicator
+The scale is engraved with a mark every degree. Near dead center the indicator
 is moving enormously fast for a small actuator movement, so consecutive degrees
 land far apart — while just before it, they pile on top of each other.
 
@@ -193,10 +193,10 @@ between two marks. Elsewhere on the same curve, the slowest degree moves it
 This is the serious one.
 
 ![After a snap-through the linkage settles on the mirror branch, putting the
-indicator somewhere different for the same actuator position](images/dead-centre-branch-flip.svg)
+indicator somewhere different for the same actuator position](images/dead-center-branch-flip.svg)
 
 Remember that the two circles cross at two points, and the mechanism lives on
-one of them. At dead centre there is only one point — so nothing at all
+one of them. At dead center there is only one point — so nothing at all
 determines which branch it comes off onto. Momentum, friction, a gust of wind,
 gravity, or a few thousandths of slop in a pivot will decide.
 
@@ -211,7 +211,7 @@ Outdoors, unattended, with wind and thermal cycling, that is not a hypothetical.
 
 Three things, all live:
 
-- **`*` in the preset menu** — this design passes within 6° of dead centre
+- **`*` in the preset menu** — this design passes within 6° of dead center
   somewhere in its range.
 - **Pins C and D turn red** whenever their own transmission angle drops below
   6°. Run the sweep and watch: you will see exactly which joint, and at what
@@ -225,7 +225,7 @@ Load `serpentine` and then `example-05` and watch the difference.
 ### If you are building one of these
 
 1. **Watch the whole sweep before you cut anything.** Play the animation end to
-   end with Inner curves on. If a pin flashes red, the design has a dead centre
+   end with Inner curves on. If a pin flashes red, the design has a dead center
    in its working range.
 2. **Aim for 40° minimum** transmission angle at both C and D. If you want a
    number to design to, that is the one.
@@ -234,7 +234,7 @@ Load `serpentine` and then `example-05` and watch the difference.
 4. **A long scale is not automatically a good scale.** Length bought by
    approaching a singularity comes with both failure modes above. The chosen
    serpentine gives up length for a mechanism that behaves.
-5. **Check the mount clearances separately.** Dead centre is about the linkage;
+5. **Check the mount clearances separately.** Dead center is about the linkage;
    whether a mount lands on top of the engraved path is a different question, and
    `tools/analyze_geometry.py` reports it.
 6. **Remember the simulator is frictionless and has no slop.** It will happily

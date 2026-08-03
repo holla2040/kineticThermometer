@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate the SVG diagrams the README's dead-centre section uses.
+"""Generate the SVG diagrams the README's dead-center section uses.
 
 Written as a script rather than hand-authored SVG so the drawings stay in step
 with the real geometry: the ones that show the mechanism read their poses from
@@ -89,7 +89,7 @@ def pedal():
     s = [txt(W / 2, 30, 'A bicycle pedal at the top of its circle', 17, INK, weight='bold'),
          txt(W / 2, 52, 'Same push. Completely different result.', 13, MUTE)]
     for i, (cx, ang, ok, cap1, cap2) in enumerate([
-            (200, -90, False, 'DEAD CENTRE', 'Foot, crank and axle in one straight line.'),
+            (200, -90, False, 'DEAD CENTER', 'Foot, crank and axle in one straight line.'),
             (560, 0, True, 'A QUARTER TURN LATER', 'The push now has leverage on the crank.')]):
         cy, r = 190, 70
         col = RED if not ok else TEAL
@@ -108,7 +108,7 @@ def pedal():
         else:
             s.append(angle_arc(px, py, (cx, cy), (px, py - 40), 26, TEAL, 2))
             s.append(txt(px - 34, py - 26, '90°', 13, TEAL))
-    return svg(W, H, ''.join(s), 'A crank at dead centre gets no turning force from a straight-down push')
+    return svg(W, H, ''.join(s), 'A crank at dead center gets no turning force from a straight-down push')
 
 
 # ------------------------------------------------- 2. two circles = two branches
@@ -134,10 +134,10 @@ def two_branches():
     return svg(W, H, ''.join(s), 'Two circles cross at two points, giving two ways to assemble the linkage')
 
 
-# ------------------------------------------------------- 3. tangent = dead centre
+# ------------------------------------------------------- 3. tangent = dead center
 def tangent():
     W, H = 760, 430
-    s = [txt(W / 2, 30, 'Dead centre: the two crossings merge into one', 17, INK, weight='bold'),
+    s = [txt(W / 2, 30, 'Dead center: the two crossings merge into one', 17, INK, weight='bold'),
          txt(W / 2, 52, 'Slide the circles apart until they only touch. Now there is no choice left.', 12, MUTE)]
     P, r1, r2 = (215, 215), 145, 125
     O6 = (P[0] + r1 + r2, P[1])
@@ -153,7 +153,7 @@ def tangent():
               'joint slop do — not the actuator.', 12, MUTE),
           txt(W / 2, 414, 'Come out on the wrong side and the sculpture reads wrong until something '
               'knocks it back.', 12, RED)]
-    return svg(W, H, ''.join(s), 'When the two circles are tangent the linkage is at dead centre')
+    return svg(W, H, ''.join(s), 'When the two circles are tangent the linkage is at dead center')
 
 
 # ------------------------------------------------------- 4. the transmission angle
@@ -164,7 +164,7 @@ def trans_angle():
              'This is the number that matters.', 12, MUTE)]
     cases = [(140, 65, TEAL, 'HEALTHY', '90° is perfect. Above ~40° is normal practice.'),
              (400, 22, AMBER, 'GETTING TIGHT', 'The driven link is starting to fight back.'),
-             (655, 4, RED, 'DEAD CENTRE', 'Below 6° the simulator paints this joint red.')]
+             (655, 4, RED, 'DEAD CENTER', 'Below 6° the simulator paints this joint red.')]
     for cx, ang, col, cap, sub in cases:
         C = (cx, 215)
         # both arms measured from C, so the drawn angle IS the labelled angle
@@ -183,7 +183,7 @@ def trans_angle():
               txt(cx, 351, sub, 11, MUTE)]
     s.append(txt(W / 2, 385, 'Squeeze that angle to nothing and the driven link no longer knows '
                  'which way to go.', 12, MUTE))
-    return svg(W, H, ''.join(s), 'Transmission angle: healthy, tight, and dead centre')
+    return svg(W, H, ''.join(s), 'Transmission angle: healthy, tight, and dead center')
 
 
 # -------------------------------------------------------------- 5. the whole chain
@@ -210,7 +210,7 @@ def chain():
           txt(200, y + 78, '0.5″ safety margin built in', 10.5, MUTE),
           txt(W / 2, 310, 'C and D are the only two joints found by crossing circles — so they are '
               'the only two that can go dead.', 12, MUTE)]
-    return svg(W, H, ''.join(s), 'The drive chain, showing which joints are watched for dead centre')
+    return svg(W, H, ''.join(s), 'The drive chain, showing which joints are watched for dead center')
 
 
 # ------------------------------------------------- 6. what it does to the scale
@@ -224,7 +224,7 @@ def scale_blowup():
     for i in range(29):
         x = 40 + i * 24.5
         s.append(line(x, y1 - 14, x, y1 + 14, TEAL, 2))
-    s.append(txt(30, y2 - 30, 'Near dead centre — marks pile up, then one degree jumps the '
+    s.append(txt(30, y2 - 30, 'Near dead center — marks pile up, then one degree jumps the '
                  'width of the sculpture', 12, RED, 'start'))
     x = 40
     for i in range(22):
@@ -235,7 +235,7 @@ def scale_blowup():
           txt(742, y2 - 26, 'ONE degree of temperature', 12.5, RED, 'end', 'bold'),
           txt(W / 2, 285, 'On design 13 of the search, a single degree moved the indicator '
               '39.7 inches. That stretch carries no marks at all.', 12, MUTE)]
-    return svg(W, H, ''.join(s), 'Near dead centre the scale marks bunch up and then jump')
+    return svg(W, H, ''.join(s), 'Near dead center the scale marks bunch up and then jump')
 
 
 # ------------------------------------------------------------- 7. the angle ruler
@@ -296,14 +296,14 @@ def branch_flip():
     return svg(W, H, ''.join(s), 'After a snap-through the linkage settles on the mirror branch and reads wrong')
 
 
-DIAGRAMS = [('dead-centre-pedal.svg', pedal),
-            ('dead-centre-two-branches.svg', two_branches),
-            ('dead-centre-tangent.svg', tangent),
-            ('dead-centre-angle.svg', trans_angle),
-            ('dead-centre-chain.svg', chain),
-            ('dead-centre-scale.svg', scale_blowup),
-            ('dead-centre-ruler.svg', ruler),
-            ('dead-centre-branch-flip.svg', branch_flip)]
+DIAGRAMS = [('dead-center-pedal.svg', pedal),
+            ('dead-center-two-branches.svg', two_branches),
+            ('dead-center-tangent.svg', tangent),
+            ('dead-center-angle.svg', trans_angle),
+            ('dead-center-chain.svg', chain),
+            ('dead-center-scale.svg', scale_blowup),
+            ('dead-center-ruler.svg', ruler),
+            ('dead-center-branch-flip.svg', branch_flip)]
 
 
 if __name__ == '__main__':

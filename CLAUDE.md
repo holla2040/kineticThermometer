@@ -212,7 +212,7 @@ Three things had to move into the core to make this work, and they matter:
   is the fix.
 - **Gestures**: a `Map` of live pointers. Two fingers = pinch + two-finger
   pan, anchored on the midpoint, and it outranks any in-flight drag. Double
-  tap (<320ms, <40px, and only if the release didn't move) recentres.
+  tap (<320ms, <40px, and only if the release didn't move) recenters.
   `zoomAt(sx,sy,f)` is shared by pinch and wheel.
 - **Hit radius 30px for a non-mouse pointer**, 20 for a mouse. Note the real
   constraint: at 1× the whole 40″ piece is ~270px wide, so the joint pins sit
@@ -361,7 +361,7 @@ Three things had to move into the core to make this work, and they matter:
   nudges, not part of the design.
 - **Zoom**: mouse wheel, cursor-anchored — the point under the pointer stays
   put. Wheel FORWARD zooms IN. `zoom` multiplies the fitted scale via
-  `scale()`; fitView centres using `scale()` too, or a refit would jump the
+  `scale()`; fitView centers using `scale()` too, or a refit would jump the
   view whenever zoom != 1. Clamped 0.15–12. Not saved, same as pan.
 - **Pan**: right-drag anywhere, or drag empty canvas (so it works on touch).
   Double-click recenters AND resets zoom. `pan` is added on top of the auto-fit in TX() and
@@ -375,8 +375,8 @@ Three things had to move into the core to make this work, and they matter:
   - Canvas y points DOWN, so the plain rotation matrix reads *clockwise* on
     screen. `rotRad()` negates the angle in ONE place; rotPt/rotDir/worldOf
     all go through it. Don't reintroduce a bare `cfg.rot*DEG`.
-  - It rotates about the UNROTATED content centre (`view.cx/cy`, set by
-    fitView from the unrotated bounds). Using the rotated centre would walk
+  - It rotates about the UNROTATED content center (`view.cx/cy`, set by
+    fitView from the unrotated bounds). Using the rotated center would walk
     the drawing across the screen as you turn it.
   - fitView fits the ROTATED bounds, so a turned design still fits the
     viewport. It computes unrotated bounds first (for the pivot), then
@@ -429,7 +429,7 @@ Three things had to move into the core to make this work, and they matter:
   and flip the tangent 180°, which would throw the rest of the comb to the
   far side of the line. Don't "simplify" either of those away.
 - **The indicator is a transparent ring** (r=9, 2px outline, no fill, no
-  centre dot) so the path and its divisions read straight through it — the
+  center dot) so the path and its divisions read straight through it — the
   viewer counts the marks the ring is sitting on. The real sculpture's
   indicator will be a ring with a hole for exactly this reason. It no
   longer carries the temperature colour; the path underneath does.

@@ -154,7 +154,7 @@ The fourth mount point is labelled `ACT_ANCHOR` in generic mode and
 `ACT_CLAMP` in Joyce mode — same point, the fixed drive pivot; the label says
 which bracket to build there.
 
-Divisions are `PATHW = 1.0″` long, centred on the path. That constant lives in
+Divisions are `PATHW = 1.0″` long, centered on the path. That constant lives in
 `buildPoints()` in `index.html` — it is the one dimension the simulator cannot
 infer, because canvas widths are in pixels. Change it there if the engraved
 path width differs.

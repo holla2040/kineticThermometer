@@ -273,8 +273,8 @@
       <dt>Drag a mount or pin</dt><dd>Reshapes the linkage. Stops Animate so you
         aren't tuning against a moving target.</dd>
       <dt>Right-drag / drag empty space</dt><dd>Pan the view.</dd>
-      <dt>Mouse wheel</dt><dd>Zoom. Forward zooms in, centred on the pointer.</dd>
-      <dt>Double-click</dt><dd>Recentre and reset zoom.</dd>
+      <dt>Mouse wheel</dt><dd>Zoom. Forward zooms in, centered on the pointer.</dd>
+      <dt>Double-click</dt><dd>Recenter and reset zoom.</dd>
       <dt>Hover a part</dt><dd>Names it and highlights the sliders that control it.</dd>
       <dt>Space</dt><dd>Play / pause the temperature sweep.</dd>
       <dt>Ctrl/Cmd + Z</dt><dd>Undo — drags, presets, Reset, loading a design.</dd>
@@ -309,23 +309,23 @@
         the Joyce QS11940 with its sliding offset clamp and fixed 16″ stroke.</dd>
     </dl>
 
-    <h3>Dead centre — what the * on the examples means</h3>
+    <h3>Dead center — what the * on the examples means</h3>
     <p>Think of a bicycle pedal at the very top of its circle. Push straight down on it
     and the crank does not turn: your foot, the crank and the axle are in one straight
     line, so there is no leverage. Which way it eventually goes is decided by your other
     foot, or a wobble — not by how hard you push.</p>
     <p>A four-bar can reach that same pose. Finding a joint means intersecting two
     circles, and two circles normally cross at <b>two</b> points — the two ways the
-    linkage can be assembled. <b>Dead centre</b> is where those circles only touch: the
+    linkage can be assembled. <b>Dead center</b> is where those circles only touch: the
     two solutions merge into one, and two of the links lie in a straight line.</p>
-    <p>Two things happen there. The indicator gets very fast — near dead centre a hair of
+    <p>Two things happen there. The indicator gets very fast — near dead center a hair of
     actuator travel swings it a long way, which is why single-stepping the extension can
     make the ring appear to skip instead of trace. And, worse, the linkage no longer has a
     branch to stay on: coming out the far side it can settle onto the <b>mirror</b>
     assembly and stay there, reading wrong until something knocks it back.</p>
     <p>The measure is the <b>transmission angle</b> — the angle between the coupler and
     the link it drives. 90° is ideal and mechanism design usually keeps it above about
-    40°; dead centre is 0°. Watch pins <b>C</b> and <b>D</b> while the sweep runs: each
+    40°; dead center is 0°. Watch pins <b>C</b> and <b>D</b> while the sweep runs: each
     turns <b style="color:#ef5350">red</b> whenever its own transmission angle drops
     below 6°, so you can see exactly where in the temperature range a design is passing
     through the singularity. Serpentine's closest approach is 7.7° and Grand Arc's is
@@ -621,7 +621,7 @@
     ctx.fillText(bbox.h.toFixed(1)+'″', a.x-6, (a.y+b.y)/2);
     ctx.restore();
   }
-  // View rotation, cfg.rot degrees, about the UNROTATED content centre so the design spins
+  // View rotation, cfg.rot degrees, about the UNROTATED content center so the design spins
   // in place. Everything on the canvas goes through TX, so rotating here rotates the lot.
   // Canvas y points DOWN, so the standard rotation matrix reads clockwise on screen.
   // Negate it — the slider counts counterclockwise.
@@ -632,7 +632,7 @@
     const dx=p.x-view.cx, dy=p.y-view.cy;
     return {x:view.cx+dx*c-dy*s, y:view.cy+dx*s+dy*c};
   }
-  // direction vectors rotate too, but without the centre offset
+  // direction vectors rotate too, but without the center offset
   function rotDir(x,y){
     if(!cfg.rot) return {x,y};
     const a=rotRad(), c=Math.cos(a), s=Math.sin(a);
@@ -650,7 +650,7 @@
     [[p0,cfg.tmin],[p1,cfg.tmax]].forEach(([p,t])=>{
       const g=actGeom(p,t); if(g){add(g.rear);add(g.front);}
     });
-    // unrotated bounds first — their centre is the pivot, and it must not move as the
+    // unrotated bounds first — their center is the pivot, and it must not move as the
     // design turns, or rotating would walk the drawing across the screen
     let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
     pts.forEach(p=>{x0=Math.min(x0,p.x);y0=Math.min(y0,p.y);x1=Math.max(x1,p.x);y1=Math.max(y1,p.y);});
@@ -665,7 +665,7 @@
     const L=VIEWINSET.left, Bm=VIEWINSET.bottom;   // keep clear of whatever UI covers us
     const px=W-L-40, py=H-Bm-50;
     view.s=Math.min(px/mw, py/mh);
-    // centre using the ZOOMED scale, or a refit would jump the view whenever zoom != 1
+    // center using the ZOOMED scale, or a refit would jump the view whenever zoom != 1
     view.ox=L+(W-L-(rx0+rx1)*scale())/2;
     view.oy=(H-Bm-(ry0+ry1)*scale())/2;
   }
@@ -813,7 +813,7 @@
     ctx.setLineDash([4,4]); ctx.stroke(); ctx.setLineDash([]);
   }
   // `bad` is an optional per-sample flag. Where it is set the trace strokes in
-  // badCol, so the stretch of a joint's travel that passes through dead centre is
+  // badCol, so the stretch of a joint's travel that passes through dead center is
   // marked on its own inner curve — visible even with the sweep parked elsewhere.
   // Same-colour samples are stroked as ONE run so the dash pattern stays continuous
   // and the red reads as a band rather than 140 separate stubs.
@@ -863,7 +863,7 @@
     ctx.fillStyle=col; ctx.fill();
   }
   // Transmission angle at a joint: between the coupler arriving and the link it
-  // drives, folded into 0..90. 90 is ideal; 0 is DEAD CENTRE, where the two
+  // drives, folded into 0..90. 90 is ideal; 0 is DEAD CENTER, where the two
   // assembly branches merge — the indicator's speed is unbounded there and the
   // linkage can come off on the mirror branch. C and D turn red below TAWARN so
   // you can watch the mechanism walk into it as the sweep runs. See the help.
@@ -1614,7 +1614,7 @@
   }
   const HANDLES=['anchor','O2','O4','O6','R','B','C','P','D','Q','tail','clamp'];
   function worldOfS(sx,sy){
-    // exact inverse of TX: undo pan+scale, then undo the rotation about the same centre
+    // exact inverse of TX: undo pan+scale, then undo the rotation about the same center
     const wx=(sx-view.ox-pan.x)/scale(), wy=(sy-view.oy-pan.y)/scale();
     if(!cfg.rot) return {x:wx, y:wy, sx, sy};
     const c=Math.cos(-rotRad()), s=Math.sin(-rotRad());
