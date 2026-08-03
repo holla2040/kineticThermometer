@@ -281,8 +281,11 @@ Three things had to move into the core to make this work, and they matter:
 - Draggable canvas handles: all 4 mounts AND all joint pins (R sets rA,
   B sets L2, C sets L3+L4, P sets cu/cv, D sets L5+L6, Q sets cu2/cv2).
   View refit is suppressed during drag; sliders track live; any edit
-  switches preset to "custom". Grabbing a handle also switches auto-cycle
-  off — you can't tune against a moving target.
+  switches preset to "custom". On DESKTOP, grabbing a handle pauses the
+  auto-cycle for the duration of the drag and release resumes it (via
+  syncDemoPhase, so it picks up from the current temperature) — if the
+  sweep was off before the grab it stays off. Mobile is different on
+  purpose: a drag never pauses, it winds the sweep to 1× (DRAGSPEED).
   Joyce mode adds TWO more handles (both return undefined in generic mode,
   which is how the pickers skip them), giving three distinct drive drags:
   - `tail` (tube rear end): slides the TUBE through a fixed clamp — only

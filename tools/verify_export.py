@@ -220,22 +220,30 @@ with sync_playwright() as p:
     print("fallback path: downloaded", d.suggested_filename)
     print("export msg:", pg.inner_text("#emsg"))
 
-    # ---- 4. drag: stops auto-cycle, is undoable --------------------------
+    # ---- 4. drag: pauses auto-cycle for its duration, is undoable --------
     pg.select_option("#preset", "serpentine"); pg.wait_for_timeout(200)
     pg.evaluate("__ct.cfg.demo = true; document.getElementById('demo').checked = true")
     before = pg.evaluate("__ct.geo.gx")
     depth0 = pg.evaluate("__ct.undoDepth()")   # preset switches push too, so measure deltas
     o4 = pg.evaluate("__ct.pivotScreen('O4')")
     pg.mouse.move(o4["x"], o4["y"]); pg.mouse.down()
-    pg.mouse.move(o4["x"] + 60, o4["y"] + 25, steps=6); pg.mouse.up()
-    pg.wait_for_timeout(200)
-    assert pg.evaluate("__ct.cfg.demo") is False, "drag must stop auto-cycle"
-    assert pg.is_checked("#demo") is False, "demo checkbox must follow"
+    pg.mouse.move(o4["x"] + 60, o4["y"] + 25, steps=6)
+    assert pg.evaluate("__ct.cfg.demo") is False, "the sweep must pause while dragging"
+    assert pg.is_checked("#demo") is False, "demo checkbox must follow the pause"
+    pg.mouse.up(); pg.wait_for_timeout(200)
+    assert pg.evaluate("__ct.cfg.demo") is True, "release must resume the sweep"
+    assert pg.is_checked("#demo") is True, "the checkbox must follow the resume"
     moved = pg.evaluate("__ct.geo.gx")
     assert abs(moved - before) > 0.5, (before, moved)
     assert pg.evaluate("!document.getElementById('undo').disabled"), "undo should be armed"
     assert pg.evaluate("__ct.undoDepth()") == depth0 + 1, "one drag = exactly one undo state"
-    print(f"drag O4: gx {before:.2f} -> {moved:.2f}, auto-cycle off, undo armed")
+    print(f"drag O4: gx {before:.2f} -> {moved:.2f}, sweep paused then resumed, undo armed")
+    # a grab while the sweep is OFF must not switch it on
+    pg.evaluate("__ct.cfg.demo = false; document.getElementById('demo').checked = false")
+    o4 = pg.evaluate("__ct.pivotScreen('O4')")
+    pg.mouse.move(o4["x"], o4["y"]); pg.mouse.down(); pg.mouse.up()
+    pg.wait_for_timeout(150)
+    assert pg.evaluate("__ct.cfg.demo") is False, "release must not start a stopped sweep"
 
     pg.click("#undo"); pg.wait_for_timeout(200)
     assert abs(pg.evaluate("__ct.geo.gx") - before) < 1e-9, "undo must restore gx"

@@ -1594,13 +1594,14 @@
     return best;
   }
   canvas.addEventListener('contextmenu',e=>e.preventDefault());   // right-drag pans instead
+  let pausedByDrag=false;                // sweep paused for the duration of a drag only
   canvas.addEventListener('pointerdown',e=>{
     const w=worldOf(e);
     dragPivot=(e.button===0)?pickPivot(w.sx,w.sy):null;            // touch reports button 0
     hideTip();
     if(dragPivot){
-      cfg.demo=false;                                              // a drag always stops the cycle
-      document.getElementById('demo').checked=false;
+      pausedByDrag=cfg.demo;             // pause while dragging; release resumes below
+      if(cfg.demo){ cfg.demo=false; document.getElementById('demo').checked=false; }
       dragMoved=false; lastWorld=w;
     } else {
       panning=true; lastScreen={x:e.clientX,y:e.clientY};          // right button, or empty space
@@ -1668,7 +1669,15 @@
     e.preventDefault();
   });
   function endDrag(){
-    if(dragPivot){ dragPivot=null; rebuildPath(); }   // refit view once on release
+    if(dragPivot){
+      dragPivot=null;
+      if(pausedByDrag){                  // the sweep was running when the grab started
+        pausedByDrag=false;
+        cfg.demo=true; document.getElementById('demo').checked=true;
+        syncDemoPhase();                 // resume from the current temperature, no jump
+      }
+      rebuildPath();                     // refit view once on release
+    }
     panning=false;
     canvas.style.cursor='default';
   }
