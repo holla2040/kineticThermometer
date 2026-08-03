@@ -405,10 +405,10 @@
     serpentine:{rA:12.6151, dA:27.6388, anch:-133.1494, gx:12.9, gy:-6.0, L2:11.3701, L3:7.7705,
                 L4:7.0142, cu:3.5, cv:11.3, s1:-1, ox:6.9036, oy:-17.4189, L5:5.9, L6:14.0,
                 cu2:19.9991, cv2:13.1489, s2:-1,
-                actT:0, aLmin:24, aStroke:18, aClamp:23.23, bAng:0},
+                actT:0, aLmin:24, aStroke:18, aClamp:23.23},
     grandarc:  {rA:20.8, dA:31.7, anch:166.7, gx:-3.8, gy:-0.1, L2:11.9, L3:11.8, L4:12.6,
                 cu:19.6, cv:-5.2, s1:-1, ox:7.7, oy:-7.6, L5:8.5, L6:13.5, cu2:19.3, cv2:-12.0, s2:-1,
-                actT:0, aLmin:24, aStroke:18, aClamp:23.23, bAng:0}
+                actT:0, aLmin:24, aStroke:18, aClamp:23.23}
   };
 
   const geo=Object.assign({}, PRESETS.serpentine);
@@ -497,10 +497,10 @@
     const O2={x:0,y:0}, O4={x:geo.gx,y:geo.gy}, O6={x:geo.ox,y:geo.oy};
     const anchor={x:geo.dA*Math.cos(geo.anch*DEG), y:geo.dA*Math.sin(geo.anch*DEG)};
     const R={x:geo.rA*Math.cos(th), y:geo.rA*Math.sin(th)};      // actuator attach
-    // coupler attach rides the same bell crank, bAng degrees away from the
-    // actuator arm — 0 keeps the two arms collinear (the original behavior)
-    const thB=th+geo.bAng*DEG;
-    const B={x:geo.L2*Math.cos(thB), y:geo.L2*Math.sin(thB)};
+    const B={x:geo.L2*Math.cos(th), y:geo.L2*Math.sin(th)};      // coupler attach (same bell crank)
+    // R and B stay COLLINEAR by design. A two-arm bell crank (an angle between
+    // them) was tried on 2026-08-02 and reverted the same day: on screen it reads
+    // as the linkage splitting into a second four-bar, and it breaks too easily.
     if(!actFits(l)) return {O2,O4,O6,anchor,R,B,valid:false,why:'act'};
     const C=circInt(B,geo.L3,O4,geo.L4,geo.s1);
     if(!C) return {O2,O4,O6,anchor,R,B,valid:false,why:'chain'};
@@ -868,9 +868,8 @@
       }
     }
     // bell crank O2->outermost of R/B
-    // the bell crank's two arms — collinear when bAng=0, a real V otherwise
-    bar(p.O2, p.R, 8, '#d9a441','#b9863a');
-    bar(p.O2, p.B, 8, '#d9a441','#b9863a');
+    const armEnd = (geo.rA>geo.L2)? p.R : p.B;
+    bar(p.O2, armEnd, 8, '#d9a441','#b9863a');
     // stage-1 coupler plate B-C-P
     if(p.C&&p.P) plate([p.B,p.C,p.P],'rgba(79,209,197,.13)','#3aa79b');
     // rocker O4->C
@@ -1009,7 +1008,7 @@
     document.getElementById('s2c').checked=geo.s2<0;
     syncActUI();
   }
-  function fmtGeo(k,v){ return (k==='anch'||k==='bAng')? Math.round(v)+'°' : (+v).toFixed(1)+'″'; }
+  function fmtGeo(k,v){ return k==='anch'? Math.round(v)+'°' : (+v).toFixed(1)+'″'; }
   // actuator-type controls; null-guarded per element like the sliders above
   function syncActUI(){
     const set=(id,v)=>{const el=document.getElementById(id); if(el) el.value=v; return el;};
@@ -1023,7 +1022,6 @@
     });
   }
   // the selected actuator's stroke bounds the excursion; re-clamp after type/stroke edits
-  function norm180(a){ return ((a+180)%360+360)%360-180; }
   function clampExcursion(){
     cfg.extMax=clamp(cfg.extMax,1,strokeOf());
     cfg.extMin=clamp(cfg.extMin,0,cfg.extMax-1);
@@ -1206,7 +1204,6 @@
     if(typeof data.geo.actT!=='number'){
       geo.actT=0; geo.aLmin=24; geo.aStroke=18; geo.aClamp=23.23;
     }
-    if(typeof data.geo.bAng!=='number') geo.bAng=0;   // pre-bell-crank-angle save
     Object.keys(geo).forEach(k=>{ if(typeof data.geo[k]==='number') geo[k]=data.geo[k]; });
     ['temp','tmin','tmax','speed','extMin','extMax','hole','lwid','rot'].forEach(k=>{ if(typeof data.cfg[k]==='number') cfg[k]=data.cfg[k]; });
     cfg.speed=clamp(cfg.speed,0.05,1);
@@ -1307,11 +1304,7 @@
   // each link in its own local frame, first hole at the origin, second along +X
   function partDefs(){
     return [
-      // part frame: O2 at origin, B along +X; R sits bAng off the coupler arm
-      // (same y-down local convention as PLATE1's cu/cv — the writer flips y)
-      {name:'CRANK',   holes:[F(0,0), F(geo.L2,0),
-                              F(geo.rA*Math.cos(geo.bAng*DEG), -geo.rA*Math.sin(geo.bAng*DEG))],
-                       labels:['O2','B','R']},
+      {name:'CRANK',   holes:[F(0,0), F(geo.L2,0), F(geo.rA,0)],       labels:['O2','B','R']},
       {name:'PLATE1',  holes:[F(0,0), F(geo.L3,0), F(geo.cu,geo.cv)],  labels:['B','C','P']},
       {name:'ROCKER1', holes:[F(0,0), F(geo.L4,0)],                    labels:['O4','C']},
       {name:'PLATE2',  holes:[F(0,0), F(geo.L5,0), F(geo.cu2,geo.cv2)],labels:['P','D','Q']},
@@ -1485,7 +1478,7 @@
     L2:'Crank arm L2', L3:'Coupler L3', cu:'Coupler pt u', cv:'Coupler pt v',
     L4:'Rocker L4', gx:'Ground O4 x', gy:'Ground O4 y',
     L5:'Link L5', L6:'Rocker L6', ox:'Ground O6 x', oy:'Ground O6 y',
-    cu2:'Indicator u', cv2:'Indicator v', aClamp:'Clamp position', bAng:'Crank arm angle'};
+    cu2:'Indicator u', cv2:'Indicator v', aClamp:'Clamp position'};
   const COMPINFO={
     act:    {get label(){return geo.actT===1?'Joyce QS11940 (offset clamp, 16″ stroke)':'Linear actuator';},
              sliders:['rA','dA','anch']},
@@ -1493,7 +1486,7 @@
     clamp:  {label:'Clamp — slides along a fixed tube; its pin mount rides along', sliders:['aClamp','dA','anch']},
     anchorM:{get label(){return geo.actT===1?'Clamp pivot mount':'Actuator anchor mount';},
              sliders:['dA','anch']},
-    crank:  {label:'Bell crank — the input link',          sliders:['L2','rA','bAng']},
+    crank:  {label:'Bell crank — the input link',          sliders:['L2','rA']},
     O2:     {label:'Bell-crank pivot O2',                  sliders:[], note:'Drag to shift the frame under everything else'},
     plate1: {label:'Stage-1 coupler plate',                sliders:['L3','cu','cv']},
     rock1:  {label:'Stage-1 rocker',                       sliders:['L4','gx','gy']},
@@ -1501,8 +1494,8 @@
     plate2: {label:'Stage-2 coupler plate (carries the indicator)', sliders:['L5','cu2','cv2']},
     rock2:  {label:'Stage-2 rocker',                       sliders:['L6','ox','oy']},
     O6:     {label:'Rocker-2 ground mount',                sliders:['ox','oy']},
-    R:      {label:'Actuator rod pin — slides on the crank; B holds still', sliders:['rA','bAng']},
-    B:      {label:'Coupler pin — anywhere on the crank plate',   sliders:['L2','bAng']},
+    R:      {label:'Actuator connection — slides along the arm, actuator follows', sliders:['rA','dA','anch']},
+    B:      {label:'Coupler pin on bell crank — drag to set L2',  sliders:['L2']},
     C:      {label:'Rocker-1 pin — drag to set L3 & L4',   sliders:['L3','L4']},
     P:      {label:'Stage-1 coupler point — drag to reshape the plate', sliders:['cu','cv']},
     D:      {label:'Rocker-2 pin — drag to set L5 & L6',   sliders:['L5','L6']},
@@ -1518,7 +1511,8 @@
     const gj=actGeom(p,cfg.temp);
     if(gj){ pt('clamp',gj.F,12); seg('act',gj.rear,p.R); }         // hover the real tube
     else seg('act',p.anchor,p.R);
-    seg('crank',p.O2,p.R); seg('crank',p.O2,p.B);
+    const armEnd=(geo.rA>geo.L2)?p.R:p.B;
+    seg('crank',p.O2,armEnd);
     seg('rock1',p.O4,p.C); seg('rock2',p.O6,p.D);
     tri('plate1',p.B,p.C,p.P); tri('plate2',p.P,p.D,p.Q);
     return out;
@@ -1619,23 +1613,24 @@
       // joint handles: dragging an endpoint re-sizes the links that meet there
       const p=pose(cfg.temp);
       if(name==='R'){
-        // move the actuator attachment WITHOUT disturbing the rest of the linkage:
-        // rA follows the cursor radially (R itself is pinned to the drive-triangle
-        // solution ray), and bAng re-aims the coupler arm so B stays exactly put
-        const angB=p.B?Math.atan2(p.B.y,p.B.x):null;
-        geo.rA=clamp(Math.hypot(w.x,w.y),8,24);
-        if(angB!==null){
-          const th1=geo.anch*DEG+phi(lenAt(cfg.temp));
-          geo.bAng=norm180((angB-th1)/DEG);
+        // Slide the CONNECTION along the crank arm, keeping every length the same:
+        // the cursor projects onto the arm's axis (past B or in close to O2, never
+        // off the line), and the whole actuator TRANSLATES with its end point — the
+        // anchor mount rides along, so pin-to-pin length and pose stay frozen.
+        // Reshaping the drive triangle instead (rA against a fixed anchor) is the
+        // desktop rA slider's job, not the drag's.
+        const ang=Math.atan2(p.R.y,p.R.x);
+        const ux=Math.cos(ang), uy=Math.sin(ang);
+        const rA1=clamp(w.x*ux+w.y*uy,2,30);
+        const ds=rA1-geo.rA;
+        const ax=p.anchor.x+ds*ux, ay=p.anchor.y+ds*uy;
+        const dA1=Math.hypot(ax,ay);
+        if(dA1>=16&&dA1<=40){              // keep the mount inside its range
+          geo.rA=rA1; geo.dA=dA1; geo.anch=Math.atan2(ay,ax)/DEG;
+          updGeoUI(['rA','dA','anch']);
         }
-        updGeoUI(['rA','bAng']);
       } else if(name==='B'){
-        // the coupler pin goes anywhere on the crank plate: radius sets L2, and the
-        // angle off the actuator arm sets bAng — B lands exactly under the cursor
-        geo.L2=clamp(Math.hypot(w.x,w.y),3,18);
-        const th1=geo.anch*DEG+phi(lenAt(cfg.temp));
-        geo.bAng=norm180((Math.atan2(w.y,w.x)-th1)/DEG);
-        updGeoUI(['L2','bAng']);
+        geo.L2=clamp(Math.hypot(w.x,w.y),3,18); updGeoUI(['L2']);
       } else if(name==='C'&&p.B){
         geo.L3=clamp(Math.hypot(w.x-p.B.x,w.y-p.B.y),5,28);
         geo.L4=clamp(Math.hypot(w.x-geo.gx,w.y-geo.gy),4,24);
