@@ -459,6 +459,16 @@
   // ---------- path cache ----------
   const NSAMP=140;
   let pathQ=[], pathJ={R:[],B:[],C:[],P:[],D:[]}, pathValid=true, pathWhy=null, pathLen=0, speedRatio=1, view={s:1,ox:0,oy:0,cx:0,cy:0}, tickCache=[], pathChunks=[], bbox=null;
+  // Does the design assemble at every sample across the temperature range? Defaults to
+  // the SAME sampling as rebuildPath, so the drag gate can never disagree with the red
+  // range warning. The feasibility overlay passes a coarser n; early exit keeps bad
+  // probes cheap either way.
+  function rangeValid(n){
+    n=n||NSAMP;
+    for(let i=0;i<=n;i++)
+      if(!pose(cfg.tmin+(cfg.tmax-cfg.tmin)*i/n).valid) return false;
+    return true;
+  }
   // One chunk per whole degree, each sampled finely enough to stay smooth where the path
   // moves fastest. Boundaries fall exactly on integer temperatures — that is what puts the
   // divisions on the tick marks. Cached with the path, not rebuilt per frame.
@@ -617,6 +627,7 @@
   // ---------- drawing ----------
   function draw(){
     ctx.clearRect(0,0,W,H);
+    drawDragRegion();                    // the grabbed handle's no-go tint, under everything
     const p=pose(cfg.temp);
 
     if(cfg.showBox) drawBBox();
@@ -928,6 +939,7 @@
       el.value=cfg.temp;
       document.getElementById('tempV').textContent=Math.round(cfg.temp)+'°F';
     }
+    stepDragRegion(5);                   // feasibility sampling during a grab, 5ms slices
     draw();
     requestAnimationFrame(frame);
   }
@@ -1381,6 +1393,17 @@
     if(undoStack.length>60) undoStack.shift();
     document.getElementById('undo').disabled=false;
   }
+  // A drag whose every move was fully rejected by the validity gate still pushed a
+  // snapshot on first movement — identical to the live state, so Undo would be a dead
+  // press. Called from drag-end (only when the drag actually moved) to pop it. Exact
+  // === is right: a full rejection restores the snapshot values bit-for-bit.
+  function dropNoopUndo(){
+    const s=undoStack[undoStack.length-1];
+    if(!s) return;
+    const same=Object.keys(s.geo).every(k=>s.geo[k]===geo[k])
+            && UNDOCFG.every(k=>s[k]===cfg[k]);
+    if(same){ undoStack.pop(); document.getElementById('undo').disabled=!undoStack.length; }
+  }
   function undo(){
     const s=undoStack.pop();
     if(!s) return;
@@ -1489,15 +1512,17 @@
             R:p.R, B:p.B, C:p.C, P:p.P, D:p.D, Q:p.Q}[name];
   }
   const HANDLES=['anchor','O2','O4','O6','R','B','C','P','D','Q','tail','clamp'];
-  function worldOf(e){
-    const r=canvas.getBoundingClientRect();
-    const sx=e.clientX-r.left, sy=e.clientY-r.top;
+  function worldOfS(sx,sy){
     // exact inverse of TX: undo pan+scale, then undo the rotation about the same centre
     const wx=(sx-view.ox-pan.x)/scale(), wy=(sy-view.oy-pan.y)/scale();
     if(!cfg.rot) return {x:wx, y:wy, sx, sy};
     const c=Math.cos(-rotRad()), s=Math.sin(-rotRad());
     const dx=wx-view.cx, dy=wy-view.cy;
     return {x:view.cx+dx*c-dy*s, y:view.cy+dx*s+dy*c, sx, sy};
+  }
+  function worldOf(e){
+    const r=canvas.getBoundingClientRect();
+    return worldOfS(e.clientX-r.left, e.clientY-r.top);
   }
   function updGeoUI(keys){
     keys.forEach(k=>{
@@ -1509,24 +1534,29 @@
   // Dragging a handle re-derives the geometry that meets there. The clamps are the same
   // numbers as the desktop sliders' min/max — and on mobile.html, where those sliders do
   // not exist, this is the ONLY thing bounding the geometry. Keep the two in step.
-  function applyDrag(name,w){
+  // mutateDrag is the pure mutation: it returns the geo keys it touched, or null when the
+  // branch declined to act (missing pose points, out-of-range guard). No UI side effects,
+  // so the validity gate and the feasibility overlay can both run it speculatively.
+  function mutateDrag(name,w){
     if(name==='O4'){
-      geo.gx=clamp(w.x,-24,30); geo.gy=clamp(w.y,-24,24); updGeoUI(['gx','gy']);
+      geo.gx=clamp(w.x,-24,30); geo.gy=clamp(w.y,-24,24); return ['gx','gy'];
     } else if(name==='O6'){
-      geo.ox=clamp(w.x,-28,34); geo.oy=clamp(w.y,-28,26); updGeoUI(['ox','oy']);
+      geo.ox=clamp(w.x,-28,34); geo.oy=clamp(w.y,-28,26); return ['ox','oy'];
     } else if(name==='anchor'){
       geo.dA=clamp(Math.hypot(w.x,w.y),16,40);
       geo.anch=Math.atan2(w.y,w.x)/DEG;
-      updGeoUI(['dA','anch']);
+      return ['dA','anch'];
     } else if(name==='O2'){
-      // O2 is the coordinate origin — moving it shifts everything else the other way
+      // O2 is the coordinate origin — moving it shifts everything else the other way.
+      // NOT a pure translation of the piece: dA changes too, so this can break assembly
+      // and the wrapper's validity gate covers it like any other handle.
       const dx=w.x-lastWorld.x, dy=w.y-lastWorld.y;
       geo.gx=clamp(geo.gx-dx,-24,30); geo.gy=clamp(geo.gy-dy,-24,24);
       geo.ox=clamp(geo.ox-dx,-28,34); geo.oy=clamp(geo.oy-dy,-28,26);
       const ax=geo.dA*Math.cos(geo.anch*DEG)-dx, ay=geo.dA*Math.sin(geo.anch*DEG)-dy;
       geo.dA=clamp(Math.hypot(ax,ay),16,40); geo.anch=Math.atan2(ay,ax)/DEG;
       lastWorld=w;
-      updGeoUI(['gx','gy','ox','oy','dA','anch']);
+      return ['gx','gy','ox','oy','dA','anch'];
     } else if(name==='tail'){
       // the tube slides through the fixed clamp: dragging the tail sets how much
       // tube sits behind the pivot, i.e. the clamp position c0
@@ -1534,7 +1564,7 @@
       if(g){
         const tail=(g.F.x-w.x)*g.u.x+(g.F.y-w.y)*g.u.y;   // cursor projected onto the axis
         geo.aClamp=clamp(JOYCE.dFront+JOYCE.tube-tail, JOYCE.c0min, JOYCE.c0max);
-        updGeoUI(['aClamp']);
+        return ['aClamp'];
       }
     } else if(name==='clamp'){
       // the CLAMP slides along a fixed tube: c0 and the pivot mount change together,
@@ -1548,7 +1578,7 @@
         const dA1=Math.hypot(ax,ay);
         if(dA1>=16&&dA1<=40){                              // keep the mount in its range
           geo.aClamp=c1; geo.dA=dA1; geo.anch=Math.atan2(ay,ax)/DEG;
-          updGeoUI(['aClamp','dA','anch']);
+          return ['aClamp','dA','anch'];
         }
       }
     } else {
@@ -1569,31 +1599,109 @@
         const dA1=Math.hypot(ax,ay);
         if(dA1>=16&&dA1<=40){              // keep the mount inside its range
           geo.rA=rA1; geo.dA=dA1; geo.anch=Math.atan2(ay,ax)/DEG;
-          updGeoUI(['rA','dA','anch']);
+          return ['rA','dA','anch'];
         }
       } else if(name==='B'){
-        geo.L2=clamp(Math.hypot(w.x,w.y),3,18); updGeoUI(['L2']);
+        geo.L2=clamp(Math.hypot(w.x,w.y),3,18); return ['L2'];
       } else if(name==='C'&&p.B){
         geo.L3=clamp(Math.hypot(w.x-p.B.x,w.y-p.B.y),5,28);
         geo.L4=clamp(Math.hypot(w.x-geo.gx,w.y-geo.gy),4,24);
-        updGeoUI(['L3','L4']);
+        return ['L3','L4'];
       } else if(name==='P'&&p.B&&p.C){
         const ux=(p.C.x-p.B.x)/geo.L3, uy=(p.C.y-p.B.y)/geo.L3;
         const dx=w.x-p.B.x, dy=w.y-p.B.y;
         geo.cu=clamp(dx*ux+dy*uy,0,22);
         geo.cv=clamp(-dx*uy+dy*ux,-14,14);
-        updGeoUI(['cu','cv']);
+        return ['cu','cv'];
       } else if(name==='D'&&p.P){
         geo.L5=clamp(Math.hypot(w.x-p.P.x,w.y-p.P.y),4,28);
         geo.L6=clamp(Math.hypot(w.x-geo.ox,w.y-geo.oy),4,22);
-        updGeoUI(['L5','L6']);
+        return ['L5','L6'];
       } else if(name==='Q'&&p.P&&p.D){
         const dl=Math.hypot(p.D.x-p.P.x,p.D.y-p.P.y);
         const vx=(p.D.x-p.P.x)/dl, vy=(p.D.y-p.P.y)/dl;
         const dx=w.x-p.P.x, dy=w.y-p.P.y;
         geo.cu2=clamp(dx*vx+dy*vy,0,24);
         geo.cv2=clamp(-dx*vy+dy*vx,-16,16);
-        updGeoUI(['cu2','cv2']);
+        return ['cu2','cv2'];
+      }
+    }
+    return null;
+  }
+  // applyDrag = mutateDrag + the validity gate + UI sync. The gate: a drag may never take
+  // a design that assembles across its full range (pathValid — the red warning) into one
+  // that doesn't. A blocked move slides to the edge: binary search between the pre-move
+  // snapshot and the rejected candidate, so the handle rides the wall instead of jumping
+  // past it. A design that is ALREADY red drags freely — the escape hatch for healing it.
+  function applyDrag(name,w){
+    const wasValid=pathValid, g0=Object.assign({},geo), lw0=lastWorld;
+    const keys=mutateDrag(name,w);
+    if(!keys) return;                    // branch declined — same no-op as before the gate
+    if(wasValid && !rangeValid()){
+      const g1={}; keys.forEach(k=>g1[k]=geo[k]);
+      let lo=0, hi=1;
+      for(let i=0;i<9;i++){              // ~0.2% of one move's delta; anch deltas are tiny
+        const m=(lo+hi)/2;               // per move so a plain lerp is safe here
+        keys.forEach(k=>geo[k]=g0[k]+(g1[k]-g0[k])*m);
+        if(rangeValid()) lo=m; else hi=m;
+      }
+      keys.forEach(k=>geo[k]=g0[k]+(g1[k]-g0[k])*lo);   // lo=0 → g0 bit-for-bit
+      // O2 is delta-based: shrink its reference point by the accepted fraction too, or
+      // the rejected remainder of this move would be re-applied on the next move event
+      if(name==='O2'&&lw0) lastWorld={x:lw0.x+(w.x-lw0.x)*lo, y:lw0.y+(w.y-lw0.y)*lo};
+      if(lo===0) return;                 // fully blocked: geo untouched, no preset flip
+    }
+    updGeoUI(keys);
+  }
+  // ---------- drag feasibility overlay ----------
+  // On grabbing a handle, the canvas is sampled on a coarse screen grid: would dropping
+  // the cursor there leave a design that still assembles across the range? Bad cells get
+  // a faint tint, so the wall the gate enforces is visible before you hit it. Approximate
+  // on purpose (coarse grid, 25-sample validity) — the gate in applyDrag is the authority.
+  // Every handle except O2 derives its geometry ABSOLUTELY from the cursor position, so
+  // the region is fixed for the whole drag and one grab-time computation serves. O2 is
+  // delta-based — no overlay for it, but it IS still gated (see mutateDrag).
+  let dragRegion=null;
+  function startDragRegion(name){
+    if(!name||name==='O2'){ dragRegion=null; return; }
+    const cell=Math.max(18, Math.ceil(Math.max(W,H)/48));   // ≤ ~48 cells across
+    const cols=Math.ceil(W/cell), rows=Math.ceil(H/cell);
+    dragRegion={name, cell, cols, rows, cells:new Int8Array(cols*rows), i:0,
+                t0:cfg.temp, done:false};        // 0 unknown, 1 good, 2 bad
+  }
+  // Time-sliced worker, called from frame(): a few ms per frame, so a grab-tap costs at
+  // most one slice and the region fades in over a few frames while you start dragging.
+  function stepDragRegion(budget){
+    if(!dragRegion||dragRegion.done) return;
+    const r=dragRegion, save=Object.assign({},geo), tSave=cfg.temp;
+    cfg.temp=r.t0;              // joint branches read pose(cfg.temp): freeze it to the
+    const end=performance.now()+budget;   // grab temp so a running sweep can't shear it
+    while(r.i<r.cells.length && performance.now()<end){
+      const w=worldOfS((r.i%r.cols+0.5)*r.cell, ((r.i/r.cols|0)+0.5)*r.cell);
+      const keys=mutateDrag(r.name,w);
+      // beyond the slider clamps the mutation saturates — that still answers "may the
+      // cursor go here?", so those cells read good; a declined branch reads bad
+      r.cells[r.i]=(keys&&rangeValid(24))?1:2;
+      Object.assign(geo,save);  // restore the user's in-flight geometry every sample
+      r.i++;
+    }
+    cfg.temp=tSave;
+    if(r.i>=r.cells.length) r.done=true;
+  }
+  function clearDragRegion(){ dragRegion=null; }
+  function drawDragRegion(){
+    if(!dragRegion||!dragPivot) return;
+    const r=dragRegion;
+    ctx.fillStyle='rgba(239,83,80,.12)';         // --bad, faint, under everything
+    // merge each row's runs of bad cells into one rect — overlapping per-cell fills
+    // double the alpha at the seams and read as a checkerboard, not a wash
+    for(let row=0;row<r.rows;row++){
+      let x0=-1;
+      for(let col=0;col<=r.cols;col++){
+        const i=row*r.cols+col;
+        const bad=(col<r.cols)&&(i<r.i)&&(r.cells[i]===2);
+        if(bad&&x0<0) x0=col;
+        else if(!bad&&x0>=0){ ctx.fillRect(x0*r.cell,row*r.cell,(col-x0)*r.cell,r.cell); x0=-1; }
       }
     }
   }
@@ -1641,6 +1749,7 @@
       pausedByDrag=cfg.demo;             // pause while dragging; release resumes below
       if(cfg.demo){ cfg.demo=false; document.getElementById('demo').checked=false; }
       dragMoved=false; lastWorld=w;
+      startDragRegion(dragPivot);        // show where this handle may go before moving
     } else {
       panning=true; lastScreen={x:e.clientX,y:e.clientY};          // right button, or empty space
     }
@@ -1732,6 +1841,8 @@
   function endDrag(){
     if(dragPivot){
       dragPivot=null;
+      clearDragRegion();
+      if(dragMoved) dropNoopUndo();      // a fully-rejected drag must not cost an undo level
       if(pausedByDrag){                  // the sweep was running when the grab started
         pausedByDrag=false;
         cfg.demo=true; document.getElementById('demo').checked=true;
@@ -1758,6 +1869,8 @@
     undoDepth:()=>undoStack.length,
     get pathJ(){ return pathJ; },      // rebuildPath reassigns it, so read it live
     lenOf, extAt, strokeOf, actGeom, JOYCE,   // actuator model, for tests and analyze_geometry
+    rangeValid,                        // the drag gate's predicate, for tests
+    get dragRegion(){ return dragRegion; },   // feasibility overlay state, for tests
     dump:()=>JSON.stringify({geo,cfg},null,1)
   };
   document.getElementById('preset').addEventListener('change',e=>{

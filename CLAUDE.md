@@ -296,13 +296,55 @@ Three things had to move into the core to make this work, and they matter:
   Joyce mode adds TWO more handles (both return undefined in generic mode,
   which is how the pickers skip them), giving three distinct drive drags:
   - `tail` (tube rear end): slides the TUBE through a fixed clamp — only
-    aClamp changes. Cursor projects onto the tube axis, pins [c0min,c0max].
+    aClamp changes. Cursor projects onto the tube axis, pins [c0min,c0max]
+    (or earlier where the validity gate stops it — see below).
   - `clamp` (the clamp body at the foot F): slides the CLAMP along a FIXED
     tube — aClamp and the pivot mount (dA/anch) change together so the pose
     at the current temperature does not move at all (tested to 1e-9). The
     pivot displacement is exactly slide×u along the tube axis.
   - `anchor` (the pivot pin): unchanged — moves the whole drive mount;
     aClamp stays put and the actuator re-aims as pose() solves.
+- **Drag validity gate + feasibility overlay** (added 2026-08-03, branch
+  `drag-area`, both pages via the shared core). A drag can NEVER take a design
+  that assembles across its full range (pathValid — the red warning) into one
+  that doesn't. Always-on, no toggle (owner's choice). How it works:
+  - `applyDrag` split into `mutateDrag(name,w)` (the pure per-handle geometry
+    mutation; returns the touched keys or null when the branch declines) and a
+    wrapper that snapshots geo, mutates, and checks `rangeValid()` — the SAME
+    141 samples as rebuildPath, so the gate can never disagree with `#tmsg`.
+  - A blocked move **slides to the edge**: 9-step binary search lerping between
+    the snapshot and the candidate, so the handle rides the wall. At the wall
+    the R/clamp frozen-pose invariant is only approximate (polar vs cartesian
+    lerp of the anchor) — the tests assert 2e-2 there, 1e-9 elsewhere.
+  - **Escape hatch:** a design that is ALREADY red drags freely (gate keys off
+    `pathValid` before the move), so dragging is how you heal one. Don't
+    "fix" that into a hard block — on mobile, drags are the only editor.
+  - **O2 is gated too** — it is NOT a pure translation (dA/anch change against
+    the shifted mounts), a fully-blocked drag restores `lastWorld` by the
+    accepted fraction so the remainder is never re-applied. But O2 gets NO
+    overlay (delta-based, no fixed region).
+  - **Overlay:** grabbing a handle (pointerdown, before any movement) starts a
+    screen-space grid scan (`startDragRegion`/`stepDragRegion`, ~27px cells,
+    time-sliced 5ms per frame from `frame()`, coarse `rangeValid(24)` per
+    cell) and `drawDragRegion` tints the NO-GO cells faint red under
+    everything; the untinted holes are where the handle may go. Cells beyond
+    the slider clamps read good on purpose — the mutation saturates, so the
+    cursor MAY go there. Computed once per grab (every handle except O2 maps
+    the cursor to geometry absolutely, so the region is drag-invariant);
+    freezes cfg.temp per slice so mobile's running sweep can't shear it.
+    Cleared on release, and on mobile also when a second finger outranks the
+    drag. Approximate by design ("close, not exact" — owner's words); the
+    gate is the authority.
+  - A drag whose every move was fully rejected pops its own undo snapshot at
+    release (`dropNoopUndo`) so Undo is never a dead press, and skips
+    `updGeoUI` so the preset label doesn't flip to "custom" for nothing.
+  - Consequences the tests now assert (verify_export section 12, mobile 11c):
+    the joyce tail no longer pins at c0min/c0max from a valid design — both
+    extremes jam the linkage, the gate stops just inside; R at serpentine
+    defaults slides in only to ~12.2 (dA+rA has ~0.25″ of slack); O4 there
+    has ~0.03″ of travel up-right and ~2″ down-left (14 good cells of 1296 —
+    the fragility that motivated the feature).
+  - `__ct` gains `rangeValid` and a `dragRegion` getter on both pages.
 - **Undo** (button + Ctrl/Cmd+Z, 60 deep) for wholesale geo changes: drags,
   preset switches, Reset, loading a saved design. Snapshots geo plus UNDOCFG,
   which is now **all of `cfg` except `temp` and `demo`** — widened on

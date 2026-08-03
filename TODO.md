@@ -47,6 +47,12 @@ architecture in [CLAUDE.md](CLAUDE.md).
       is hardcoded in `buildPoints()`. Expose it as a field if it needs tuning
       against real stock.
 - [ ] The README GIF predates the bounding box and the current geometry.
+- [ ] The drag validity gate (2026-08-03) covers DRAGS only — sliders, typed
+  fields and the excursion fields can still turn the design red (the red box
+  and its click-to-reset stay for those paths). Gate them too if the owner
+  asks.
+- [ ] The feasibility overlay tints bad cells; a stroked boundary line
+  (marching squares over the same grid) would be crisper if wanted.
       Regenerating costs another ~4.6 MB in git history, so it was left alone.
 
 ## Mobile (mobile.html, added 2026-07-31)
