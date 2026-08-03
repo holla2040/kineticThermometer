@@ -316,7 +316,7 @@
 </dialog>
 <div id="toggle">☰</div>
 <div id="tip"><div class="n"></div><div class="s"></div></div>
-<div id="hint">Drag mounts &amp; joint pins to reshape · right-drag or drag empty space to pan, double-click to recenter · <b>Space</b> plays/pauses · <b>Ctrl+Z</b> undoes</div>
+<div id="hint">Drag mounts &amp; joint pins to reshape · right-drag or drag empty space to pan, double-click to recenter · <b>Space</b> plays/pauses · <b>↑↓</b> step the extension 0.1″ · <b>←→</b> rotate · <b>Ctrl+Z</b> undoes</div>
 
 <script>
 (function(){
@@ -1676,6 +1676,29 @@
     if(e.code==='KeyZ' && (e.ctrlKey||e.metaKey)){
       if(typing) return;                // let the text field do its own undo
       e.preventDefault(); undo(); return;
+    }
+    // arrows: Up/Down step the actuator extension, Left/Right rotate the view.
+    // Only when no control has focus — a focused slider keeps its native arrows.
+    const inCtl=fld && (fld.tagName==='INPUT'||fld.tagName==='SELECT'||fld.tagName==='TEXTAREA');
+    if(!inCtl && (e.code==='ArrowUp'||e.code==='ArrowDown')){
+      e.preventDefault();
+      const span=cfg.extMax-cfg.extMin;
+      let f=clamp((cfg.temp-cfg.tmin)/(cfg.tmax-cfg.tmin),0,1);
+      if(cfg.tdir) f=1-f;                                    // f = fraction of extension
+      const ext=clamp(cfg.extMin+f*span+(e.code==='ArrowUp'?0.1:-0.1), cfg.extMin, cfg.extMax);
+      let f2=(ext-cfg.extMin)/span; if(cfg.tdir) f2=1-f2;
+      cfg.temp=cfg.tmin+f2*(cfg.tmax-cfg.tmin);
+      cfg.demo=false; document.getElementById('demo').checked=false;
+      document.getElementById('temp').value=cfg.temp;
+      document.getElementById('tempV').textContent=Math.round(cfg.temp)+'°F';
+      return;
+    }
+    if(!inCtl && (e.code==='ArrowLeft'||e.code==='ArrowRight')){
+      e.preventDefault();
+      const r=document.getElementById('rot');
+      r.value=((cfg.rot+(e.code==='ArrowRight'?10:-10))%360+360)%360;
+      r.dispatchEvent(new Event('input'));                   // the slider handler refits
+      return;
     }
     if(e.code!=='Space') return;
     if(typing) return;

@@ -600,6 +600,30 @@ with sync_playwright() as p:
     assert pg.evaluate("__ct.cfg.demo") is was, "Space did not toggle back"
     print(f"spacebar toggles the sweep both ways (from {was})")
 
+    # arrows: Up/Down step the actuator extension by 0.1in, Left/Right rotate 10deg
+    pg.evaluate("__ct.cfg.demo=false; document.getElementById('demo').checked=false;"
+                "__ct.cfg.temp=70")
+    e0 = pg.evaluate("__ct.extAt(__ct.cfg.temp)")
+    pg.keyboard.press("ArrowUp"); pg.wait_for_timeout(60)
+    e1 = pg.evaluate("__ct.extAt(__ct.cfg.temp)")
+    assert abs(e1 - (e0 + 0.1)) < 1e-6, (e0, e1)
+    pg.keyboard.press("ArrowDown"); pg.keyboard.press("ArrowDown"); pg.wait_for_timeout(60)
+    e2 = pg.evaluate("__ct.extAt(__ct.cfg.temp)")
+    assert abs(e2 - (e0 - 0.1)) < 1e-6, (e0, e2)
+    assert pg.evaluate("__ct.cfg.demo") is False, "stepping the reading keeps the sweep off"
+    rot0 = pg.evaluate("__ct.cfg.rot")
+    pg.keyboard.press("ArrowRight"); pg.wait_for_timeout(60)
+    assert pg.evaluate("__ct.cfg.rot") == (rot0 + 10) % 360
+    pg.keyboard.press("ArrowLeft"); pg.keyboard.press("ArrowLeft"); pg.wait_for_timeout(60)
+    assert pg.evaluate("__ct.cfg.rot") == (rot0 - 10) % 360
+    pg.keyboard.press("ArrowRight"); pg.wait_for_timeout(60)   # back where we started
+    # a focused field keeps its native arrow behavior
+    t0 = pg.evaluate("__ct.cfg.temp")
+    pg.focus("#sname"); pg.keyboard.press("ArrowUp"); pg.wait_for_timeout(60)
+    assert pg.evaluate("__ct.cfg.temp") == t0, "arrows must not steal focus from fields"
+    pg.eval_on_selector("#sname", "e => e.blur()")
+    print("arrows: Up/Down step the extension 0.1in, Left/Right rotate 10deg, fields keep theirs")
+
     # ---- 9. actuator types ----------------------------------------------
     pg.reload(); pg.wait_for_timeout(700)
     pg.evaluate("document.querySelectorAll('details').forEach(d => d.open = true)")
