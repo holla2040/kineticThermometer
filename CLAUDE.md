@@ -17,12 +17,26 @@ laid out for a phone in portrait — see "Two pages, one shared core" below.
 `ik-demo.html` is an earlier unrelated FABRIK inverse-kinematics demo kept
 for reference.
 
-## Hardware constraints (fixed, from the owner)
+## Hardware constraints (from the owner)
 
-- Linear actuator: **24″ retracted, 18″ stroke, 42″ extended** (pin-to-pin).
-  These are hard physical constants — `ACT={lmin:24, stroke:18}` in the code.
+- **Two selectable actuator types** since 2026-08-02 (branch `joyce`), chosen
+  by `geo.actT` and the "Actuator type" select in the Actuator drive section:
+  - **0 = generic pin-to-pin**: retracted length `geo.aLmin` + stroke
+    `geo.aStroke`, editable fields, defaults **24″+18″ = 42″ extended** (the
+    original assumed hardware). Old saves and both presets mean this.
+  - **1 = Joyce QS11940** — the actuator the owner actually owns. Rear mount
+    is a split clamp sliding on the Ø2″ tube; its pivot pin sits **2.378″ off
+    the tube centerline** (offset clamp). Driven length =
+    `√((aClamp+ext)² + off²)`. `geo.aClamp` = c0 = pivot→rod-pin at full
+    retraction, adjustable 3.48–24.66″ (drag the tube tail or type it),
+    default 23.23″ = as modeled. Stroke **exactly 16″**. All dimensions in
+    the `JOYCE` const were MEASURED from the owner's Fusion model
+    ("Joyce QS11940 Linear Actuator") via the Fusion MCP link — see
+    FABRICATION.md's table and images/joyce-*.png. They are real, not
+    placeholders. `JOYCE.side` (pivot ear side) is still a mounting choice.
 - The usable slice of stroke is configurable ("excursion min/max" fields,
-  inches of extension 0–18) so the build can avoid end-stops.
+  inches of extension, capped at the selected actuator's stroke) so the build
+  can avoid end-stops.
 - Large freestanding garden piece; the serpentine preset's overall envelope
   is **40.7″ × 30.8″** square-on for the current serpentine — the path, every
   swept joint, and all four mounts. At the 110° default view it reads
@@ -32,8 +46,10 @@ for reference.
 ## Design requirements established so far
 
 1. Drive: actuator → bell crank (law of cosines triangle: anchor distance
-   dA, crank radius rA; must satisfy |dA−rA| < 24 and dA+rA > 42 with margin
-   or the triangle can't close somewhere in the stroke).
+   dA, crank radius rA; must satisfy |dA−rA| < lenOf(extMin) and
+   dA+rA > lenOf(extMax) with margin or the triangle can't close somewhere
+   in the stroke — for the default generic actuator that is the original
+   |dA−rA| < 24 and dA+rA > 42).
 2. Two chained four-bars; indicator = stage-2 coupler point Q.
 3. **Fabrication rule:** every fixed mount (actuator anchor, bell-crank
    pivot O2, rocker grounds O4 and O6) keeps ≥2.5″ clearance from the path.
@@ -77,11 +93,14 @@ same as its predecessor. Recorded honestly so nobody re-derives it:
   cross the scale: O2–O4, O2–O6, O4–O6, O4–ACT. The curve now weaves
   between the mounts instead of staying on one side of them. This is a
   build blocker, not an aesthetic call — unresolved as of this writing.
-- **Actuator ceiling: dA+rA=40.15″**, so the drive triangle stops closing
-  past ~15.65″ of extension. That is why extMax is 15.5 and not 17. The
-  controller must never command past 15.5″ or the linkage jams against a
-  pose it cannot reach. Only 0.15″ of slack — re-check this if dA, rA, or
-  the excursion is touched.
+- **Actuator ceiling (GENERIC type): dA+rA=40.25″**, so the drive triangle
+  stops closing past ~15.75″ of extension. That is why extMax is 15.5 and
+  not 17. The controller must never command past 15.5″ or the linkage jams
+  against a pose it cannot reach. ~0.25″ of slack — re-check this if dA, rA,
+  or the excursion is touched. **On the Joyce type this ceiling is retired**:
+  at the as-modeled clamp position (aClamp=23.23) the driven length runs
+  23.35–39.30″ over the full 16″ stroke, inside the window with 0.45″ spare —
+  asserted by verify_export.py. Sliding the clamp changes it; re-check.
 
 `tools/analyze_geometry.py <dump.json>` re-runs all of the above against a
 `__ct.dump()` capture.
@@ -97,8 +116,15 @@ flow plus both DXF exports (`python3 tools/verify_export.py [outdir]`).
 ## How the solver works (index.html, ~pose())
 
 1. temp → fraction of scale (optionally reversed via `tdir`) → extension
-   within [extMin, extMax] → pin-to-pin length l ∈ [24+extMin, 24+extMax].
-2. Crank angle th = anch + acos((dA²+rA²−l²)/(2·dA·rA)).
+   within [extMin, extMax] (`extAt`) → driven length l = `lenOf(ext)`:
+   generic `aLmin+ext` pin-to-pin, joyce `√((aClamp+ext)²+JOYCE.off²)` from
+   the clamp pivot to the rod pin. `strokeOf()` is the selected stroke.
+2. Crank angle th = anch + acos((dA²+rA²−l²)/(2·dA·rA)). The fixed drive
+   pivot (dA, anch about O2) is the rear pin for generic, the CLAMP pivot
+   for joyce — pose() is identical either way. `actGeom(p,t)` adds the
+   joyce tube frame (direction u, clamp foot F, tube front/rear) for the
+   drawing, the hover seg and the tail drag handle; fitView includes the
+   tube's swept body at both stroke extremes so the tail stays on screen.
 3. B = L2 at angle th. C = circle-circle intersection of (B, L3) and
    (O4, L4), branch sign s1. P = B + cu·û + cv·perp(û) where û is unit BC.
 4. D = intersection of (P, L5) and (O6, L6), branch s2. Q = P + cu2·v̂ +
@@ -235,7 +261,20 @@ Three things had to move into the core to make this work, and they matter:
 
 - Presets dropdown (serpentine / grandarc / custom), Reset preset.
 - Temperature reading slider + numeric Scale min/max °F fields (≥10° span).
-- Reverse scale checkbox (retract = hot). Excursion min/max fields (≥1″).
+- Reverse scale checkbox (retract = hot). Excursion min/max fields (≥1″,
+  capped at the selected actuator's stroke — `clampExcursion()` re-clamps on
+  type/stroke edits).
+- **Actuator type select + per-type fields** (both pages, ids shared so the
+  mobile parity test is untouched): `#actT`, generic row `#actGen`
+  (`#aLmin`/`#aStroke`), joyce row `#actJoy` (`#aClamp`). All four are
+  numeric geo keys so presets/saves/undo/applyData carry them for free; a
+  pre-actuator-types save loads as generic 24/18 via an applyData migration.
+  Editing any of them flips the preset to "custom". `syncActUI()` (called
+  from syncSliders) fills fields and toggles row visibility, null-guarded
+  like the slider wiring. The joyce render draws the tube at real scale
+  (Ø2″ tube, Ø1.378″ rod, motor pod, blue clamp glyph at the pivot foot);
+  in joyce mode the 4th DXF mount point is labelled ACT_CLAMP instead of
+  ACT_ANCHOR.
 - Auto-cycle with speed slider **0.05×–1×**; **spacebar toggles** auto-cycle
   globally (guarded so focused buttons don't re-fire; resumes from current
   temperature via phase sync — see syncDemoPhase()).
@@ -244,6 +283,11 @@ Three things had to move into the core to make this work, and they matter:
   View refit is suppressed during drag; sliders track live; any edit
   switches preset to "custom". Grabbing a handle also switches auto-cycle
   off — you can't tune against a moving target.
+  In joyce mode there is an 11th handle, `clamp`, at the TUBE'S REAR END —
+  the clamp itself barely moves (it rides a 2.378″ circle round the fixed
+  pivot); what visibly slides is the tube, so you grab the tail. The cursor
+  projects onto the tube axis and aClamp pins at [c0min, c0max]. It returns
+  undefined in generic mode, which is how both pages' pickers skip it.
 - **Undo** (button + Ctrl/Cmd+Z, 60 deep) for wholesale geo changes: drags,
   preset switches, Reset, loading a saved design. Snapshots geo plus UNDOCFG,
   which is now **all of `cfg` except `temp` and `demo`** — widened on
@@ -392,7 +436,8 @@ Three things had to move into the core to make this work, and they matter:
 - Public view: uncheck "Show mechanism" — only the path + indicator ring.
 - Debug hook for tests: `window.__ct` = {pivotScreen(name), geo, cfg, pose,
   pan, zoom, rotPt, screen (=TX), dir (=rotDir), rebuild(), ticks, chunks,
-  bbox, pathJ, undoDepth(), buildParts(), buildPoints(), dump()}. mobile.html
+  bbox, pathJ, undoDepth(), buildParts(), buildPoints(),
+  lenOf(ext), extAt(t), strokeOf(), actGeom(p,t), JOYCE, dump()}. mobile.html
   adds {peek, sheetOpen, setSheet(), pick(x,y,type)}. The builders return DXF
   text so tests can assert on the export without a download. `dump()` returns
   geo+cfg as JSON — this is how the owner hands over a hand-tuned design:

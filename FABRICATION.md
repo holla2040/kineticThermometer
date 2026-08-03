@@ -8,12 +8,41 @@ current design. Numbers come from `tools/analyze_geometry.py`; re-run it after
 python3 tools/analyze_geometry.py dump.json     # dump.json = copy(__ct.dump())
 ```
 
-## Hardware, fixed
+## Hardware — two selectable actuator types
 
-- Linear actuator: **24″ retracted, 18″ stroke, 42″ extended**, pin to pin.
-  Hard physical constants (`ACT={lmin:24, stroke:18}`).
-- Usable slice of that stroke is configurable (excursion min/max, inches of
-  extension) so the build can stay off the end stops. Currently **0–15.5″**.
+The simulator's Actuator drive section selects between:
+
+- **Generic pin-to-pin** — retracted length and stroke are editable fields,
+  defaulting to **24″ retracted + 18″ stroke = 42″ extended** (the original
+  assumed hardware). Old saved designs load as this.
+- **Joyce QS11940 (the owner's actual actuator)** — rear mount is a split
+  clamp sliding on the tube, pivot pin offset from the tube axis. All
+  dimensions below were measured from the owner's Fusion model
+  ("Joyce QS11940 Linear Actuator") over the Fusion MCP link on 2026-08-02:
+
+| quantity | value |
+|---|---|
+| Stroke | **16.000″ exactly** (slider-joint limits in the model) |
+| Pivot offset from tube centerline | **2.378″** |
+| Clamp position `c0` (pivot → rod pin at full retraction) | adjustable **3.48–24.66″**, as-modeled **23.23″** |
+| Rod pin ahead of tube front at retraction | 2.008″ |
+| Tube Ø / rod Ø | 2.00″ / 1.378″ |
+| Pin holes (clamp pivot AND rod clevis) | **Ø0.472″ (12 mm)** |
+| Tube body length (incl. motor pod) / grippable tube | 27.913″ / 24.134″ |
+| Clamp width along tube | 2.953″ |
+
+  Driven length is `√((c0+ext)² + 2.378²)` from the clamp pivot to the rod
+  pin. The clamp clears the motor pod, so it can traverse the full tube.
+  `JOYCE.side` (+1/−1, which side the pivot ear points) is a mounting choice
+  still to confirm. Reference views from the Fusion model:
+  [images/joyce-iso.png](images/joyce-iso.png),
+  [images/joyce-pivot-axis.png](images/joyce-pivot-axis.png).
+
+- Usable slice of the selected stroke is configurable (excursion min/max,
+  inches of extension) so the build can stay off the end stops. Currently
+  **0–15.5″** on the generic type; the Joyce closes the drive triangle over
+  its **full 0–16″** stroke at the as-modeled clamp position (asserted by
+  `verify_export.py`).
 
 ## Current geometry — Serpentine, owner-tuned
 
@@ -48,15 +77,20 @@ Every fixed mount must clear the path by **≥2.5″**. Measured:
 The mount-to-mount crossing rule was dropped by the owner, so mounts may sit
 on either side of the path. Clearance still stands, and O2 is short by 0.44″.
 
-### 2. The actuator has ~0.25″ of headroom
+### 2. The GENERIC actuator has ~0.25″ of headroom; the Joyce does not have this problem
 
-`dA + rA = 40.25″`, so the drive triangle stops closing past about **15.75″**
-of extension. That is why the excursion is 15.5″ and not 17″.
+On the generic type, `dA + rA = 40.25″`, so the drive triangle stops closing
+past about **15.75″** of extension. That is why the excursion is 15.5″ and
+not 17″.
 
 - The controller must **never** command past 15.5″. Beyond the limit the
   linkage cannot reach a valid pose — the actuator stalls against geometry it
   physically cannot satisfy.
 - Re-check this figure if `dA`, `rA`, or the excursion is touched at all.
+- On the **Joyce** type at the as-modeled clamp position (c0 = 23.23″) the
+  driven length runs 23.35–39.30″ over the full 16″ stroke, inside the
+  15.52–39.75″ window — **0.45″ of top-end headroom, full stroke usable**.
+  Sliding the clamp changes this; re-check after moving it.
 
 ### 3. The scale is very non-linear, with a near-cusp
 
@@ -115,6 +149,10 @@ triangles. Sized by the **Pivot hole ⌀** and **Link width** fields (0.375″ a
 | `LABELS` | °F every 10°, and the mount names |
 | `MOUNTS` | the four fixed mount holes |
 | `POINTS` | snap targets at every 10° mark and every mount |
+
+The fourth mount point is labelled `ACT_ANCHOR` in generic mode and
+`ACT_CLAMP` in Joyce mode — same point, the fixed drive pivot; the label says
+which bracket to build there.
 
 Divisions are `PATHW = 1.0″` long, centred on the path. That constant lives in
 `buildPoints()` in `index.html` — it is the one dimension the simulator cannot
