@@ -554,6 +554,40 @@ with sync_playwright() as p:
     assert at_hi == total, f"at 12x every label should fit, got {at_hi} of {total}"
     print(f"labels thin to {at1}/{total} at 1x and all {at_hi} return at 12x")
 
+    # ---- 11b. joyce actuator: type switch in the sheet, clamp drag ------
+    pg.reload(); pg.wait_for_timeout(600); ready(pg)
+    pg.evaluate("__ct.setSheet(true)"); pg.wait_for_timeout(350)
+    pg.evaluate("document.querySelectorAll('details').forEach(d => d.open = true)")
+    pg.select_option("#actT", "1"); pg.wait_for_timeout(250)
+    assert pg.evaluate("__ct.geo.actT") == 1
+    assert pg.evaluate("document.getElementById('actJoy').style.display") == "", \
+        "the clamp-position field must appear in the sheet"
+    pg.evaluate("__ct.setSheet(false)"); pg.wait_for_timeout(350)
+    pg.evaluate("__ct.cfg.demo=false; __ct.cfg.temp=70; __ct.rebuild()")
+    pg.wait_for_timeout(200)
+    c0 = pg.evaluate("__ct.geo.aClamp")
+    q = pg.evaluate("__ct.pivotScreen('clamp')")
+    assert 0 <= q["x"] <= 390 and 0 <= q["y"] <= 844, \
+        f"the tube tail handle must be inside the fitted view, got {q}"
+    u = pg.evaluate("() => { const p=__ct.pose(__ct.cfg.temp);"
+                    "  const g=__ct.actGeom(p,__ct.cfg.temp);"
+                    "  return __ct.dir(g.u.x,g.u.y); }")
+    ptr(pg, "pointerdown", 1, q["x"], q["y"])
+    for i in range(1, 7):
+        ptr(pg, "pointermove", 1, q["x"] + u["x"]*8*i, q["y"] + u["y"]*8*i)
+    tipname = pg.eval_on_selector("#tip .n", "e => e.textContent")
+    tiptext = pg.eval_on_selector("#tip .s", "e => e.textContent")
+    ptr(pg, "pointerup", 1, q["x"] + u["x"]*48, q["y"] + u["y"]*48)
+    pg.wait_for_timeout(200)
+    c1 = pg.evaluate("__ct.geo.aClamp")
+    J = pg.evaluate("__ct.JOYCE")
+    assert c1 != c0 and J["c0min"] <= c1 <= J["c0max"], (c0, c1)
+    assert "aClamp" in tiptext, f"drag tip must carry the live value, got {tiptext!r}"
+    assert "clamp" in tipname.lower(), tipname
+    pg.tap("#tbReset"); pg.wait_for_timeout(300)
+    assert pg.evaluate("__ct.geo.actT") == 0, "Reset must return to the generic actuator"
+    print(f"joyce on the phone: sheet switch, clamp drag {c0} -> {c1} with value tip, Reset restores generic")
+
     # ---- 12. landscape turns the sheet into a left drawer ---------------
     pg.reload(); pg.wait_for_timeout(600); ready(pg)   # section 11 left a 12x zoom on
     pg.set_viewport_size({"width": 844, "height": 390})

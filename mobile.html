@@ -612,6 +612,11 @@
     pathQ.forEach(add);
     const p0=pose(cfg.tmin), p1=pose(cfg.tmax);
     [p0,p1].forEach(p=>{['O2','O4','O6','anchor','B','C','P','D'].forEach(k=>add(p[k]));});
+    // the joyce tube sticks out past the clamp — keep its swept body (and the
+    // draggable tail) inside the fitted view at both stroke extremes
+    [[p0,cfg.tmin],[p1,cfg.tmax]].forEach(([p,t])=>{
+      const g=actGeom(p,t); if(g){add(g.rear);add(g.front);}
+    });
     // unrotated bounds first — their centre is the pivot, and it must not move as the
     // design turns, or rotating would walk the drawing across the screen
     let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
@@ -1450,10 +1455,11 @@
     L2:'Crank arm L2', L3:'Coupler L3', cu:'Coupler pt u', cv:'Coupler pt v',
     L4:'Rocker L4', gx:'Ground O4 x', gy:'Ground O4 y',
     L5:'Link L5', L6:'Rocker L6', ox:'Ground O6 x', oy:'Ground O6 y',
-    cu2:'Indicator u', cv2:'Indicator v'};
+    cu2:'Indicator u', cv2:'Indicator v', aClamp:'Clamp position'};
   const COMPINFO={
     act:    {get label(){return geo.actT===1?'Joyce QS11940 (offset clamp, 16″ stroke)':'Linear actuator';},
              sliders:['rA','dA','anch']},
+    clamp:  {label:'Actuator tube — drag the tail to slide the clamp', sliders:['aClamp']},
     anchorM:{get label(){return geo.actT===1?'Clamp pivot mount':'Actuator anchor mount';},
              sliders:['dA','anch']},
     crank:  {label:'Bell crank — the input link',          sliders:['L2','rA']},
@@ -1508,10 +1514,11 @@
     return null;
   }
   function pivotPos(name,p){
+    if(name==='clamp'){ const g=actGeom(p,cfg.temp); return g?g.rear:undefined; }
     return {anchor:p.anchor, O2:p.O2, O4:p.O4, O6:p.O6,
             R:p.R, B:p.B, C:p.C, P:p.P, D:p.D, Q:p.Q}[name];
   }
-  const HANDLES=['anchor','O2','O4','O6','R','B','C','P','D','Q'];
+  const HANDLES=['anchor','O2','O4','O6','R','B','C','P','D','Q','clamp'];
   function worldOf(e){
     const r=canvas.getBoundingClientRect();
     const sx=e.clientX-r.left, sy=e.clientY-r.top;
@@ -1550,6 +1557,15 @@
       geo.dA=clamp(Math.hypot(ax,ay),16,40); geo.anch=Math.atan2(ay,ax)/DEG;
       lastWorld=w;
       updGeoUI(['gx','gy','ox','oy','dA','anch']);
+    } else if(name==='clamp'){
+      // the tube slides through the fixed clamp: dragging the tail sets how much
+      // tube sits behind the pivot, i.e. the clamp position c0
+      const p=pose(cfg.temp), g=actGeom(p,cfg.temp);
+      if(g){
+        const tail=(g.F.x-w.x)*g.u.x+(g.F.y-w.y)*g.u.y;   // cursor projected onto the axis
+        geo.aClamp=clamp(JOYCE.dFront+JOYCE.tube-tail, JOYCE.c0min, JOYCE.c0max);
+        updGeoUI(['aClamp']);
+      }
     } else {
       // joint handles: dragging an endpoint re-sizes the links that meet there
       const p=pose(cfg.temp);

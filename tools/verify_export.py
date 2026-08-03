@@ -708,6 +708,40 @@ with sync_playwright() as p:
     assert pg.evaluate("__ct.geo.actT") == 1, "undo must restore the joyce type"
     assert pg.input_value("#preset") == "custom", "presetOf must relabel the restored geometry"
     print("preset switch resets to generic; undo restores joyce and the custom label")
+
+    # dragging the tube tail slides the clamp along the tube
+    pg.select_option("#actT", "1"); pg.wait_for_timeout(150)
+    pg.evaluate("__ct.cfg.demo=false; __ct.cfg.temp=70; __ct.rebuild()")
+    pg.wait_for_timeout(150)
+    c0 = pg.evaluate("__ct.geo.aClamp")
+    q = pg.evaluate("__ct.pivotScreen('clamp')")
+    u = pg.evaluate("() => { const p=__ct.pose(__ct.cfg.temp);"
+                    "  const g=__ct.actGeom(p,__ct.cfg.temp);"
+                    "  return __ct.dir(g.u.x,g.u.y); }")
+    pg.mouse.move(q["x"], q["y"]); pg.mouse.down()
+    pg.mouse.move(q["x"] + u["x"]*50, q["y"] + u["y"]*50, steps=8); pg.mouse.up()
+    pg.wait_for_timeout(150)
+    J = pg.evaluate("__ct.JOYCE")
+    c1 = pg.evaluate("__ct.geo.aClamp")
+    assert c1 != c0, "dragging the tail must move the clamp"
+    assert J["c0min"] <= c1 <= J["c0max"], c1
+    assert pg.input_value("#aClamp") == str(c1), "the field must track the drag"
+    # yank it far off both ends: the clamp pins at its measured travel
+    q = pg.evaluate("__ct.pivotScreen('clamp')")
+    pg.mouse.move(q["x"], q["y"]); pg.mouse.down()
+    pg.mouse.move(q["x"] - u["x"]*3000, q["y"] - u["y"]*3000, steps=6); pg.mouse.up()
+    pg.wait_for_timeout(150)
+    assert pg.evaluate("__ct.geo.aClamp") == J["c0min"], "tail pulled out -> clamp at c0min"
+    q = pg.evaluate("__ct.pivotScreen('clamp')")
+    u = pg.evaluate("() => { const p=__ct.pose(__ct.cfg.temp);"      # the tube swung as c0
+                    "  const g=__ct.actGeom(p,__ct.cfg.temp);"       # changed; re-read its
+                    "  return __ct.dir(g.u.x,g.u.y); }")             # direction before pushing
+    pg.mouse.move(q["x"], q["y"]); pg.mouse.down()
+    pg.mouse.move(q["x"] + u["x"]*3000, q["y"] + u["y"]*3000, steps=6); pg.mouse.up()
+    pg.wait_for_timeout(150)
+    assert pg.evaluate("__ct.geo.aClamp") == J["c0max"], "tail pushed in -> clamp at c0max"
+    pg.keyboard.press("Control+z"); pg.keyboard.press("Control+z"); pg.keyboard.press("Control+z")
+    print(f"clamp drag: slides c0 (got {c1}), pins at [{J['c0min']}, {J['c0max']}]")
     assert not errs, errs
 
     pg.screenshot(path=os.path.join(OUT,"panel.png"))
