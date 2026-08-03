@@ -76,7 +76,7 @@ JS = """
   }
 
   // actuator travel actually used
-  const lmin = 24 + c.extMin, lmax = 24 + c.extMax;
+  const lmin = __ct.lenOf(c.extMin), lmax = __ct.lenOf(c.extMax);
   return {bad, total, seg10, steps, minDot, minAt, clear,
           lmin, lmax, dAmrA: Math.abs(g.dA-g.rA), dApluslA: g.dA+g.rA};
 }

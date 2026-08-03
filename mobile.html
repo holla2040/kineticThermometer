@@ -393,9 +393,11 @@
   const PRESETS={
     serpentine:{rA:12.6151, dA:27.6388, anch:-133.1494, gx:12.9, gy:-6.0, L2:11.3701, L3:7.7705,
                 L4:7.0142, cu:3.5, cv:11.3, s1:-1, ox:6.9036, oy:-17.4189, L5:5.9, L6:14.0,
-                cu2:19.9991, cv2:13.1489, s2:-1},
+                cu2:19.9991, cv2:13.1489, s2:-1,
+                actT:0, aLmin:24, aStroke:18, aClamp:23.23},
     grandarc:  {rA:20.8, dA:31.7, anch:166.7, gx:-3.8, gy:-0.1, L2:11.9, L3:11.8, L4:12.6,
-                cu:19.6, cv:-5.2, s1:-1, ox:7.7, oy:-7.6, L5:8.5, L6:13.5, cu2:19.3, cv2:-12.0, s2:-1}
+                cu:19.6, cv:-5.2, s1:-1, ox:7.7, oy:-7.6, L5:8.5, L6:13.5, cu2:19.3, cv2:-12.0, s2:-1,
+                actT:0, aLmin:24, aStroke:18, aClamp:23.23}
   };
 
   const geo=Object.assign({}, PRESETS.serpentine);
@@ -406,8 +408,15 @@
              hole:0.375, lwid:1.5};    // fabrication: pivot hole ⌀ and link stock width, inches
   // the page as it first opened — what resetAll() puts back
   const CFGDEFAULTS=Object.assign({},cfg);
-  // actuator stroke envelope (pin-to-pin): 24″ retracted + 18″ stroke = 42″ extended
-  const ACT={lmin:24, stroke:18};
+  // Two actuator types, selected by geo.actT: 0 = generic pin-to-pin (retracted length
+  // geo.aLmin + stroke geo.aStroke, defaults 24″+18″ = the original hardware envelope),
+  // 1 = Joyce QS11940 (owner's hardware) — measured from the owner's Fusion model 2026-08-02.
+  // JOYCE.stroke: exactly 16″ (slider-joint limits). off: the brass pivot-pin axis sits
+  // 2.378″ off the tube centerline (the offset clamp). geo.aClamp = c0 = pivot→rod-pin
+  // along the tube at full retraction; c0min/c0max = clamp travel along the Ø2″ tube.
+  // dFront: rod clevis pin ahead of the tube front face at full retraction.
+  const JOYCE={stroke:16, off:2.378, c0min:3.48, c0max:24.66, tube:27.913, tubeGrip:24.134,
+               dFront:2.008, clampW:2.953, tubeDia:2.0, rodDia:1.378, pinDia:0.472, side:1};
   let demoT=0.35;
   // Non-zero REPLACES cfg.speed for the sweep. mobile.html winds it up (DRAGSPEED) while
   // a handle is being dragged, so the whole excursion of the change plays out under your
@@ -432,11 +441,18 @@
     // drive triangle must close with margin at this length
     return l>=Math.abs(geo.dA-geo.rA)+0.5 && l<=geo.dA+geo.rA-0.5;
   }
-  function lenAt(t){
+  function strokeOf(){ return geo.actT===1 ? JOYCE.stroke : geo.aStroke; }
+  function extAt(t){
     let f=clamp((t-cfg.tmin)/(cfg.tmax-cfg.tmin),0,1);
     if(cfg.tdir) f=1-f;               // reversed: retracted = hot
-    return ACT.lmin + cfg.extMin + f*(cfg.extMax-cfg.extMin);
+    return cfg.extMin + f*(cfg.extMax-cfg.extMin);
   }
+  // driven length: fixed-pivot -> rod pin. Generic measures pin-to-pin; joyce measures
+  // clamp-pivot to rod pin, where the pivot sits JOYCE.off from the tube axis.
+  function lenOf(ext){
+    return geo.actT===1 ? Math.hypot(geo.aClamp+ext, JOYCE.off) : geo.aLmin+ext;
+  }
+  function lenAt(t){ return lenOf(extAt(t)); }
   // full pose for a temperature; null pieces if unassemblable
   function pose(t){
     const l=lenAt(t);
@@ -776,7 +792,7 @@
     if(p.anchor&&p.R){
       const A=TX(p.anchor), R=TX(p.R);
       const dx=R.x-A.x, dy=R.y-A.y, L=Math.hypot(dx,dy), ux=dx/L, uy=dy/L;
-      const bl=Math.min(L*0.6, ACT.lmin*scale()*0.92);
+      const bl=Math.min(L*0.6, geo.aLmin*scale()*0.92);
       ctx.lineCap='round';
       ctx.beginPath(); ctx.moveTo(A.x,A.y); ctx.lineTo(A.x+ux*bl,A.y+uy*bl);
       ctx.strokeStyle='#3a4453'; ctx.lineWidth=13; ctx.stroke();
@@ -875,20 +891,21 @@
   function updateReadout(p){
     document.getElementById('oT').textContent=Math.round(cfg.temp)+'°F';
     document.getElementById('oT').style.color=tempColor(cfg.temp);
-    document.getElementById('oE').textContent=(lenAt(cfg.temp)-ACT.lmin).toFixed(1)+'″';
+    document.getElementById('oE').textContent=extAt(cfg.temp).toFixed(1)+'″';
     document.getElementById('oL').textContent=(pathLen).toFixed(0)+'″';
     document.getElementById('oR').textContent=speedRatio?speedRatio.toFixed(1)+'×':'—';
     const m=document.getElementById('tmsg');
     if(!pathValid){
       m.className='bad';
       m.textContent = (pathWhy==='act')
-        ? '⚠ Actuator can’t drive the crank through this range — the 24–42″ pin-to-pin triangle won’t close. Need |anchor−crank| < 24″ and anchor+crank > 42″ (with margin). Increase crank radius or anchor distance.'
+        ? '⚠ Actuator can’t drive the crank through this range — the '+lenOf(cfg.extMin).toFixed(1)+'–'+lenOf(cfg.extMax).toFixed(1)+'″ drive triangle won’t close. Need |anchor−crank| < '+lenOf(cfg.extMin).toFixed(1)+'″ and anchor+crank > '+lenOf(cfg.extMax).toFixed(1)+'″ (with margin).'
+          + (geo.actT===1 ? ' Slide the clamp back (smaller clamp position), or increase crank radius / anchor distance.' : ' Increase crank radius or anchor distance.')
         : '⚠ The chain can’t assemble across part of the temperature range — a joint separates or jams. Nudge link lengths or ground pivots until this clears.';
     } else if(!p.valid){
       m.className='bad'; m.textContent='⚠ Unassemblable at this reading.';
     } else {
       m.className='ok';
-      m.textContent='Assembles across full range ✓  '+pathLen.toFixed(0)+'″ of scale from an 18″ stroke.';
+      m.textContent='Assembles across full range ✓  '+pathLen.toFixed(0)+'″ of scale from a '+strokeOf().toFixed(0)+'″ stroke.';
     }
   }
 
@@ -980,14 +997,14 @@
   document.getElementById('extMin').addEventListener('change',e=>{
     let v=parseFloat(e.target.value);
     if(!isFinite(v)) v=cfg.extMin;
-    v=clamp(v,0,Math.min(18,cfg.extMax-1));   // keep at least 1″ of travel
+    v=clamp(v,0,Math.min(strokeOf(),cfg.extMax-1));   // keep at least 1″ of travel
     cfg.extMin=v; e.target.value=v;
     rebuildPath();
   });
   document.getElementById('extMax').addEventListener('change',e=>{
     let v=parseFloat(e.target.value);
     if(!isFinite(v)) v=cfg.extMax;
-    v=clamp(v,Math.max(0,cfg.extMin+1),18);
+    v=clamp(v,Math.max(0,cfg.extMin+1),strokeOf());
     cfg.extMax=v; e.target.value=v;
     rebuildPath();
   });
@@ -1062,10 +1079,15 @@
   }
   function applyData(data){
     if(!data||!data.geo||!data.cfg) return false;
+    // pre-actuator-types save: force the original generic actuator so old saves
+    // mean exactly what they did the day they were written
+    if(typeof data.geo.actT!=='number'){
+      geo.actT=0; geo.aLmin=24; geo.aStroke=18; geo.aClamp=23.23;
+    }
     Object.keys(geo).forEach(k=>{ if(typeof data.geo[k]==='number') geo[k]=data.geo[k]; });
     ['temp','tmin','tmax','speed','extMin','extMax','hole','lwid','rot'].forEach(k=>{ if(typeof data.cfg[k]==='number') cfg[k]=data.cfg[k]; });
     cfg.speed=clamp(cfg.speed,0.05,1);
-    cfg.extMin=clamp(cfg.extMin,0,17); cfg.extMax=clamp(cfg.extMax,cfg.extMin+1,18);
+    cfg.extMin=clamp(cfg.extMin,0,strokeOf()-1); cfg.extMax=clamp(cfg.extMax,cfg.extMin+1,strokeOf());
     cfg.hole=clamp(cfg.hole,0.0625,2); cfg.lwid=clamp(cfg.lwid,0.5,6);
     cfg.rot=clamp(Math.round(cfg.rot/10)*10,0,360);
     ['demo','ticks','ghost','showBox','dims','tdir'].forEach(k=>{ if(typeof data.cfg[k]==='boolean') cfg[k]=data.cfg[k]; });
@@ -1674,6 +1696,7 @@
     pick:pickPivot,                    // so a test can assert the touch hit radius directly
     undoDepth:()=>undoStack.length,
     get pathJ(){ return pathJ; },      // rebuildPath reassigns it, so read it live
+    lenOf, extAt, strokeOf, JOYCE,     // actuator model, for tests and analyze_geometry
     get peek(){ return peekH; },       // mobile-only: what fitView keeps clear
     get sheetOpen(){ return sheet.classList.contains('open'); },
     setSheet,

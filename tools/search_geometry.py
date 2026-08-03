@@ -19,6 +19,10 @@ Angles in radians here; index.html stores anch in degrees.
 """
 import math, random
 
+# Models the GENERIC pin-to-pin actuator only (24″ retracted + 18″ stroke), i.e. the
+# hardware the original search ran against. The Joyce QS11940 offset-clamp type (see
+# JOYCE in index.html) is deliberately not represented here — parameterizing this
+# search for it is a separate task if a joyce-based re-search is ever wanted.
 LMIN, STROKE = 24.0, 18.0
 LMAX = LMIN + STROKE
 
