@@ -809,6 +809,28 @@ with sync_playwright() as p:
     pg.reload(); pg.wait_for_timeout(700)
     assert pg.evaluate("__ct.geo.actT") == 0, "switching back to generic must persist too"
     print("actuator choice persists across reloads; geometry still opens on defaults")
+
+    # ---- 10. the red range warning is a click-to-reset -------------------
+    pg.reload(); pg.wait_for_timeout(700)
+    depth0 = pg.evaluate("__ct.undoDepth()")
+    pg.evaluate("__ct.geo.dA = 40; __ct.geo.rA = 8; __ct.rebuild()")   # triangle can't close
+    pg.wait_for_timeout(150)
+    assert pg.eval_on_selector("#tmsg", "e => e.className") == "bad"
+    assert "Click here to reset" in pg.inner_text("#tmsg")
+    assert pg.eval_on_selector("#tmsg", "e => getComputedStyle(e).cursor") == "pointer"
+    pg.click("#tmsg"); pg.wait_for_timeout(200)
+    assert pg.eval_on_selector("#tmsg", "e => e.className") == "ok", "click must reset the design"
+    assert abs(pg.evaluate("__ct.geo.dA") - 27.6388) < 1e-9, "geometry back to the preset"
+    assert pg.evaluate("__ct.undoDepth()") == depth0 + 1, "the reset must be undoable"
+    pg.keyboard.press("Control+z"); pg.wait_for_timeout(200)
+    assert pg.evaluate("__ct.geo.dA") == 40, "undo must bring the broken state back"
+    pg.click("#tmsg"); pg.wait_for_timeout(200)   # reset again, then prove ok is inert
+    ok_dA = pg.evaluate("__ct.geo.dA")
+    depth1 = pg.evaluate("__ct.undoDepth()")
+    pg.click("#tmsg"); pg.wait_for_timeout(150)
+    assert pg.evaluate("__ct.geo.dA") == ok_dA and pg.evaluate("__ct.undoDepth()") == depth1, \
+        "clicking the GREEN box must do nothing"
+    print("red range box: click resets (undoably); green box is inert")
     assert not errs, errs
 
     pg.screenshot(path=os.path.join(OUT,"panel.png"))

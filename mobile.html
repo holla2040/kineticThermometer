@@ -959,16 +959,18 @@
     const m=document.getElementById('tmsg');
     if(!pathValid){
       m.className='bad';
-      m.textContent = (pathWhy==='act')
+      m.textContent = ((pathWhy==='act')
         ? '⚠ Actuator can’t drive the crank through this range — the '+lenOf(cfg.extMin).toFixed(1)+'–'+lenOf(cfg.extMax).toFixed(1)+'″ drive triangle won’t close. Need |anchor−crank| < '+lenOf(cfg.extMin).toFixed(1)+'″ and anchor+crank > '+lenOf(cfg.extMax).toFixed(1)+'″ (with margin).'
           + (geo.actT===1 ? ' Slide the clamp back (smaller clamp position), or increase crank radius / anchor distance.' : ' Increase crank radius or anchor distance.')
-        : '⚠ The chain can’t assemble across part of the temperature range — a joint separates or jams. Nudge link lengths or ground pivots until this clears.';
+        : '⚠ The chain can’t assemble across part of the temperature range — a joint separates or jams. Nudge link lengths or ground pivots until this clears.')
+        + ' Click here to reset.';
     } else if(!p.valid){
-      m.className='bad'; m.textContent='⚠ Unassemblable at this reading.';
+      m.className='bad'; m.textContent='⚠ Unassemblable at this reading. Click here to reset.';
     } else {
       m.className='ok';
       m.textContent='Assembles across full range ✓  '+pathLen.toFixed(0)+'″ of scale from a '+strokeOf().toFixed(0)+'″ stroke.';
     }
+    m.style.cursor = m.className==='bad' ? 'pointer' : '';   // red box is clickable
   }
 
   // ---------- loop ----------
@@ -1458,6 +1460,12 @@
     syncDemoPhase();                   // the sweep comes back on; don't let it jump
     syncUI(); rebuildPath();
   }
+  // a drag that breaks the linkage turns the range message red — clicking the red
+  // box is a shortcut to the same full reset as the Reset button (and undo undoes it)
+  (()=>{
+    const m=document.getElementById('tmsg'); if(!m) return;
+    m.addEventListener('click',()=>{ if(m.className==='bad') resetAll(); });
+  })();
 
   // ---------- draggable mounts & hover labels ----------
   let dragPivot=null, hoverPivot=null, hoverCompId=null, lastWorld=null;

@@ -588,6 +588,16 @@ with sync_playwright() as p:
     assert pg.evaluate("__ct.geo.actT") == 0, "Reset must return to the generic actuator"
     print(f"joyce on the phone: sheet switch, clamp drag {c0} -> {c1} with value tip, Reset restores generic")
 
+    # the red range warning resets from the sheet too (shared-core wiring)
+    pg.evaluate("__ct.geo.dA = 40; __ct.geo.rA = 8; __ct.rebuild()")
+    pg.evaluate("__ct.setSheet(true)"); pg.wait_for_timeout(350)
+    assert pg.eval_on_selector("#tmsg", "e => e.className") == "bad"
+    pg.tap("#tmsg"); pg.wait_for_timeout(250)
+    assert pg.eval_on_selector("#tmsg", "e => e.className") == "ok", \
+        "tapping the red box must reset the design"
+    pg.evaluate("__ct.setSheet(false)"); pg.wait_for_timeout(300)
+    print("red range box in the sheet: tap resets")
+
     # ---- 12. landscape turns the sheet into a left drawer ---------------
     pg.reload(); pg.wait_for_timeout(600); ready(pg)   # section 11 left a 12x zoom on
     pg.set_viewport_size({"width": 844, "height": 390})
