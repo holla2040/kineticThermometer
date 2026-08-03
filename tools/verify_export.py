@@ -608,6 +608,82 @@ with sync_playwright() as p:
     pg.fill("#aLmin", "30"); pg.dispatch_event("#aLmin", "change"); pg.wait_for_timeout(150)
     assert pg.evaluate("__ct.lenOf(0)") == 30, "retracted length must feed the drive length"
     print("generic actuator fields: defaults 24/18, stroke re-clamps the excursion")
+
+    # joyce type: fixed 16in stroke, offset-clamp driven length
+    pg.reload(); pg.wait_for_timeout(700)
+    pg.evaluate("document.querySelectorAll('details').forEach(d => d.open = true)")
+    pg.fill("#extMax", "17"); pg.dispatch_event("#extMax", "change"); pg.wait_for_timeout(100)
+    assert pg.evaluate("__ct.cfg.extMax") == 17
+    pg.select_option("#actT", "1"); pg.wait_for_timeout(200)
+    assert pg.evaluate("__ct.geo.actT") == 1
+    assert pg.evaluate("__ct.strokeOf()") == 16
+    assert pg.evaluate("__ct.cfg.extMax") == 16, "joyce's 16in stroke must re-clamp the excursion"
+    assert pg.input_value("#extMax") == "16", "the field must follow"
+    assert pg.input_value("#preset") == "custom"
+    vis = pg.evaluate("[document.getElementById('actGen').style.display,"
+                      " document.getElementById('actJoy').style.display]")
+    assert vis == ["none", ""], f"joyce shows the clamp field, hides retracted/stroke: {vis}"
+    # driven-length math checked END TO END: python recomputes R from raw geo
+    J = pg.evaluate("__ct.JOYCE")
+    gg = pg.evaluate("({dA:__ct.geo.dA, rA:__ct.geo.rA, anch:__ct.geo.anch, c0:__ct.geo.aClamp})")
+    cv = pg.evaluate("({tmin:__ct.cfg.tmin, tmax:__ct.cfg.tmax,"
+                     "  extMin:__ct.cfg.extMin, extMax:__ct.cfg.extMax})")
+    for t in (cv["tmin"], 40.0, cv["tmax"]):
+        f = min(max((t - cv["tmin"]) / (cv["tmax"] - cv["tmin"]), 0), 1)
+        ext = cv["extMin"] + f * (cv["extMax"] - cv["extMin"])
+        l = math.hypot(gg["c0"] + ext, J["off"])
+        th = math.radians(gg["anch"]) + math.acos(
+            (gg["dA"]**2 + gg["rA"]**2 - l*l) / (2*gg["dA"]*gg["rA"]))
+        R = pg.evaluate(f"__ct.pose({t}).R")
+        assert abs(R["x"] - gg["rA"]*math.cos(th)) < 1e-9, f"pose.R.x at {t}F"
+        assert abs(R["y"] - gg["rA"]*math.sin(th)) < 1e-9, f"pose.R.y at {t}F"
+    print("joyce: 16in stroke clamps excursion; sqrt((c0+ext)^2+off^2) drives pose.R exactly")
+
+    # the whole 16in stroke assembles on the serpentine at the as-modeled clamp position
+    assert pg.evaluate("__ct.cfg.extMin") == 0 and pg.evaluate("__ct.cfg.extMax") == 16
+    assert pg.eval_on_selector("#tmsg", "e => e.className") == "ok", \
+        "serpentine + joyce must assemble across the full 0-16in excursion"
+    print("serpentine assembles across the FULL 16in joyce stroke (generic ceiling was 15.5)")
+
+    # a named save round-trips the type and clamp position
+    pg.fill("#aClamp", "12.5"); pg.dispatch_event("#aClamp", "change"); pg.wait_for_timeout(100)
+    pg.fill("#sname", "joyce rt"); pg.click("#save"); pg.wait_for_timeout(150)
+    pg.select_option("#actT", "0"); pg.wait_for_timeout(150)
+    assert pg.evaluate("__ct.geo.actT") == 0
+    pg.select_option("#sload", "joyce rt"); pg.wait_for_timeout(200)
+    assert pg.evaluate("__ct.geo.actT") == 1, "load must restore the joyce type"
+    assert pg.evaluate("__ct.geo.aClamp") == 12.5, "load must restore the clamp position"
+    assert pg.input_value("#actT") == "1"
+    assert pg.evaluate("document.getElementById('actJoy').style.display") == ""
+    print("named save round-trips actT and aClamp")
+
+    # a pre-actuator-types save must load as the original generic hardware
+    pg.evaluate("""() => {
+      const all = JSON.parse(localStorage.getItem('couplerThermometer.saves'));
+      const rec = all['joyce rt'];
+      delete rec.geo.actT; delete rec.geo.aLmin; delete rec.geo.aStroke; delete rec.geo.aClamp;
+      all['old style'] = rec;
+      localStorage.setItem('couplerThermometer.saves', JSON.stringify(all));
+    }""")
+    pg.reload(); pg.wait_for_timeout(700)
+    pg.evaluate("document.querySelectorAll('details').forEach(d => d.open = true)")
+    pg.select_option("#actT", "1"); pg.wait_for_timeout(100)   # page sits in joyce mode...
+    pg.select_option("#sload", "old style"); pg.wait_for_timeout(200)
+    g = pg.evaluate("({actT:__ct.geo.actT, aLmin:__ct.geo.aLmin,"
+                    "  aStroke:__ct.geo.aStroke, aClamp:__ct.geo.aClamp})")
+    assert g == {"actT": 0, "aLmin": 24, "aStroke": 18, "aClamp": 23.23}, \
+        f"an old save must mean the original generic actuator, got {g}"
+    print("pre-actuator-types saves load as generic 24/18 even from joyce mode")
+
+    # preset switch resets the type; undo brings joyce back (presetOf relabels)
+    pg.select_option("#actT", "1"); pg.wait_for_timeout(150)
+    assert pg.input_value("#preset") == "custom"
+    pg.select_option("#preset", "serpentine"); pg.wait_for_timeout(150)
+    assert pg.evaluate("__ct.geo.actT") == 0, "presets are defined on the generic actuator"
+    pg.click("#undo"); pg.wait_for_timeout(200)
+    assert pg.evaluate("__ct.geo.actT") == 1, "undo must restore the joyce type"
+    assert pg.input_value("#preset") == "custom", "presetOf must relabel the restored geometry"
+    print("preset switch resets to generic; undo restores joyce and the custom label")
     assert not errs, errs
 
     pg.screenshot(path=os.path.join(OUT,"panel.png"))
