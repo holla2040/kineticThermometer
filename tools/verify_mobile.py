@@ -566,7 +566,7 @@ with sync_playwright() as p:
     pg.evaluate("__ct.cfg.demo=false; __ct.cfg.temp=70; __ct.rebuild()")
     pg.wait_for_timeout(200)
     c0 = pg.evaluate("__ct.geo.aClamp")
-    q = pg.evaluate("__ct.pivotScreen('clamp')")
+    q = pg.evaluate("__ct.pivotScreen('tail')")
     assert 0 <= q["x"] <= 390 and 0 <= q["y"] <= 844, \
         f"the tube tail handle must be inside the fitted view, got {q}"
     u = pg.evaluate("() => { const p=__ct.pose(__ct.cfg.temp);"

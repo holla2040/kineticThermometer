@@ -283,11 +283,16 @@ Three things had to move into the core to make this work, and they matter:
   View refit is suppressed during drag; sliders track live; any edit
   switches preset to "custom". Grabbing a handle also switches auto-cycle
   off — you can't tune against a moving target.
-  In joyce mode there is an 11th handle, `clamp`, at the TUBE'S REAR END —
-  the clamp itself barely moves (it rides a 2.378″ circle round the fixed
-  pivot); what visibly slides is the tube, so you grab the tail. The cursor
-  projects onto the tube axis and aClamp pins at [c0min, c0max]. It returns
-  undefined in generic mode, which is how both pages' pickers skip it.
+  Joyce mode adds TWO more handles (both return undefined in generic mode,
+  which is how the pickers skip them), giving three distinct drive drags:
+  - `tail` (tube rear end): slides the TUBE through a fixed clamp — only
+    aClamp changes. Cursor projects onto the tube axis, pins [c0min,c0max].
+  - `clamp` (the clamp body at the foot F): slides the CLAMP along a FIXED
+    tube — aClamp and the pivot mount (dA/anch) change together so the pose
+    at the current temperature does not move at all (tested to 1e-9). The
+    pivot displacement is exactly slide×u along the tube axis.
+  - `anchor` (the pivot pin): unchanged — moves the whole drive mount;
+    aClamp stays put and the actuator re-aims as pose() solves.
 - **Undo** (button + Ctrl/Cmd+Z, 60 deep) for wholesale geo changes: drags,
   preset switches, Reset, loading a saved design. Snapshots geo plus UNDOCFG,
   which is now **all of `cfg` except `temp` and `demo`** — widened on

@@ -714,7 +714,7 @@ with sync_playwright() as p:
     pg.evaluate("__ct.cfg.demo=false; __ct.cfg.temp=70; __ct.rebuild()")
     pg.wait_for_timeout(150)
     c0 = pg.evaluate("__ct.geo.aClamp")
-    q = pg.evaluate("__ct.pivotScreen('clamp')")
+    q = pg.evaluate("__ct.pivotScreen('tail')")
     u = pg.evaluate("() => { const p=__ct.pose(__ct.cfg.temp);"
                     "  const g=__ct.actGeom(p,__ct.cfg.temp);"
                     "  return __ct.dir(g.u.x,g.u.y); }")
@@ -727,12 +727,12 @@ with sync_playwright() as p:
     assert J["c0min"] <= c1 <= J["c0max"], c1
     assert pg.input_value("#aClamp") == str(c1), "the field must track the drag"
     # yank it far off both ends: the clamp pins at its measured travel
-    q = pg.evaluate("__ct.pivotScreen('clamp')")
+    q = pg.evaluate("__ct.pivotScreen('tail')")
     pg.mouse.move(q["x"], q["y"]); pg.mouse.down()
     pg.mouse.move(q["x"] - u["x"]*3000, q["y"] - u["y"]*3000, steps=6); pg.mouse.up()
     pg.wait_for_timeout(150)
     assert pg.evaluate("__ct.geo.aClamp") == J["c0min"], "tail pulled out -> clamp at c0min"
-    q = pg.evaluate("__ct.pivotScreen('clamp')")
+    q = pg.evaluate("__ct.pivotScreen('tail')")
     u = pg.evaluate("() => { const p=__ct.pose(__ct.cfg.temp);"      # the tube swung as c0
                     "  const g=__ct.actGeom(p,__ct.cfg.temp);"       # changed; re-read its
                     "  return __ct.dir(g.u.x,g.u.y); }")             # direction before pushing
@@ -741,7 +741,53 @@ with sync_playwright() as p:
     pg.wait_for_timeout(150)
     assert pg.evaluate("__ct.geo.aClamp") == J["c0max"], "tail pushed in -> clamp at c0max"
     pg.keyboard.press("Control+z"); pg.keyboard.press("Control+z"); pg.keyboard.press("Control+z")
-    print(f"clamp drag: slides c0 (got {c1}), pins at [{J['c0min']}, {J['c0max']}]")
+    print(f"tail drag: slides c0 (got {c1}), pins at [{J['c0min']}, {J['c0max']}]")
+
+    # dragging the CLAMP BODY slides the clamp along a FIXED tube: aClamp and the
+    # pivot mount (dA/anch) change together and the pose at this temperature does
+    # not move at all. Dragging the PIVOT PIN moves the whole drive: dA/anch change,
+    # aClamp does not.
+    pg.reload(); pg.wait_for_timeout(700)
+    pg.evaluate("document.querySelectorAll('details').forEach(d => d.open = true)")
+    pg.select_option("#actT", "1"); pg.wait_for_timeout(200)
+    pg.evaluate("__ct.cfg.demo=false; __ct.cfg.temp=70; __ct.rebuild()")
+    pg.wait_for_timeout(150)
+    before = pg.evaluate("() => { const p=__ct.pose(__ct.cfg.temp);"
+                         "  return {R:p.R, A:p.anchor, c0:__ct.geo.aClamp,"
+                         "          dA:__ct.geo.dA, anch:__ct.geo.anch}; }")
+    u = pg.evaluate("() => { const p=__ct.pose(__ct.cfg.temp);"
+                    "  const g=__ct.actGeom(p,__ct.cfg.temp);"
+                    "  return __ct.dir(g.u.x,g.u.y); }")
+    q = pg.evaluate("__ct.pivotScreen('clamp')")
+    pg.mouse.move(q["x"], q["y"]); pg.mouse.down()
+    pg.mouse.move(q["x"] + u["x"]*40, q["y"] + u["y"]*40, steps=8); pg.mouse.up()
+    pg.wait_for_timeout(150)
+    after = pg.evaluate("() => { const p=__ct.pose(__ct.cfg.temp);"
+                        "  return {R:p.R, A:p.anchor, c0:__ct.geo.aClamp,"
+                        "          dA:__ct.geo.dA, anch:__ct.geo.anch}; }")
+    assert after["c0"] != before["c0"], "clamp-body drag must slide the clamp"
+    assert after["dA"] != before["dA"], "the pivot mount must ride along"
+    assert abs(after["R"]["x"] - before["R"]["x"]) < 1e-9 and \
+           abs(after["R"]["y"] - before["R"]["y"]) < 1e-9, \
+        "the tube (and the whole pose) must stay put while the clamp slides"
+    # the pivot moved parallel to the tube axis by exactly the slide distance
+    dxA, dyA = after["A"]["x"]-before["A"]["x"], after["A"]["y"]-before["A"]["y"]
+    uw = pg.evaluate("() => { const p=__ct.pose(__ct.cfg.temp);"
+                     "  return __ct.actGeom(p,__ct.cfg.temp).u; }")
+    slide = before["c0"] - after["c0"]
+    assert abs(dxA - slide*uw["x"]) < 1e-9 and abs(dyA - slide*uw["y"]) < 1e-9, \
+        "pivot displacement must equal the slide along the tube axis"
+    print(f"clamp-body drag: c0 {before['c0']} -> {after['c0']}, mount rode along, pose untouched")
+
+    # pivot-pin drag = move the whole drive: aClamp untouched
+    q = pg.evaluate("__ct.pivotScreen('anchor')")
+    pg.mouse.move(q["x"], q["y"]); pg.mouse.down()
+    pg.mouse.move(q["x"] + 25, q["y"] + 25, steps=6); pg.mouse.up()
+    pg.wait_for_timeout(150)
+    assert pg.evaluate("__ct.geo.aClamp") == after["c0"], \
+        "moving the pivot pin must NOT change the clamp position on the tube"
+    assert pg.evaluate("__ct.geo.dA") != after["dA"], "it must move the mount"
+    print("pivot-pin drag moves the whole drive; clamp position on the tube unchanged")
     assert not errs, errs
 
     pg.screenshot(path=os.path.join(OUT,"panel.png"))

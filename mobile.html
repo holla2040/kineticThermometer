@@ -1459,7 +1459,8 @@
   const COMPINFO={
     act:    {get label(){return geo.actT===1?'Joyce QS11940 (offset clamp, 16″ stroke)':'Linear actuator';},
              sliders:['rA','dA','anch']},
-    clamp:  {label:'Actuator tube — drag the tail to slide the clamp', sliders:['aClamp']},
+    tail:   {label:'Actuator tube — drag the tail to slide the tube through the clamp', sliders:['aClamp']},
+    clamp:  {label:'Clamp — slides along a fixed tube; its pin mount rides along', sliders:['aClamp','dA','anch']},
     anchorM:{get label(){return geo.actT===1?'Clamp pivot mount':'Actuator anchor mount';},
              sliders:['dA','anch']},
     crank:  {label:'Bell crank — the input link',          sliders:['L2','rA']},
@@ -1485,7 +1486,8 @@
     pt('anchorM',p.anchor); pt('O2',p.O2); pt('O4',p.O4); pt('O6',p.O6); pt('Q',p.Q,13);
     pt('R',p.R,11); pt('B',p.B,11); pt('C',p.C,11); pt('P',p.P,11); pt('D',p.D,11);
     const gj=actGeom(p,cfg.temp);
-    if(gj) seg('act',gj.rear,p.R); else seg('act',p.anchor,p.R);   // hover the real tube
+    if(gj){ pt('clamp',gj.F,12); seg('act',gj.rear,p.R); }         // hover the real tube
+    else seg('act',p.anchor,p.R);
     const armEnd=(geo.rA>geo.L2)?p.R:p.B;
     seg('crank',p.O2,armEnd);
     seg('rock1',p.O4,p.C); seg('rock2',p.O6,p.D);
@@ -1514,11 +1516,14 @@
     return null;
   }
   function pivotPos(name,p){
-    if(name==='clamp'){ const g=actGeom(p,cfg.temp); return g?g.rear:undefined; }
+    if(name==='tail'||name==='clamp'){
+      const g=actGeom(p,cfg.temp);
+      return g ? (name==='tail'?g.rear:g.F) : undefined;
+    }
     return {anchor:p.anchor, O2:p.O2, O4:p.O4, O6:p.O6,
             R:p.R, B:p.B, C:p.C, P:p.P, D:p.D, Q:p.Q}[name];
   }
-  const HANDLES=['anchor','O2','O4','O6','R','B','C','P','D','Q','clamp'];
+  const HANDLES=['anchor','O2','O4','O6','R','B','C','P','D','Q','tail','clamp'];
   function worldOf(e){
     const r=canvas.getBoundingClientRect();
     const sx=e.clientX-r.left, sy=e.clientY-r.top;
@@ -1557,7 +1562,7 @@
       geo.dA=clamp(Math.hypot(ax,ay),16,40); geo.anch=Math.atan2(ay,ax)/DEG;
       lastWorld=w;
       updGeoUI(['gx','gy','ox','oy','dA','anch']);
-    } else if(name==='clamp'){
+    } else if(name==='tail'){
       // the tube slides through the fixed clamp: dragging the tail sets how much
       // tube sits behind the pivot, i.e. the clamp position c0
       const p=pose(cfg.temp), g=actGeom(p,cfg.temp);
@@ -1565,6 +1570,21 @@
         const tail=(g.F.x-w.x)*g.u.x+(g.F.y-w.y)*g.u.y;   // cursor projected onto the axis
         geo.aClamp=clamp(JOYCE.dFront+JOYCE.tube-tail, JOYCE.c0min, JOYCE.c0max);
         updGeoUI(['aClamp']);
+      }
+    } else if(name==='clamp'){
+      // the CLAMP slides along a fixed tube: c0 and the pivot mount change together,
+      // so the tube — and the whole pose at this temperature — stays exactly put
+      const p=pose(cfg.temp), g=actGeom(p,cfg.temp);
+      if(g){
+        const s=(w.x-g.F.x)*g.u.x+(w.y-g.F.y)*g.u.y;      // cursor along the tube axis
+        const c1=clamp(geo.aClamp-s, JOYCE.c0min, JOYCE.c0max);
+        const ds=geo.aClamp-c1;                            // the slide actually applied
+        const ax=p.anchor.x+ds*g.u.x, ay=p.anchor.y+ds*g.u.y;
+        const dA1=Math.hypot(ax,ay);
+        if(dA1>=16&&dA1<=40){                              // keep the mount in its range
+          geo.aClamp=c1; geo.dA=dA1; geo.anch=Math.atan2(ay,ax)/DEG;
+          updGeoUI(['aClamp','dA','anch']);
+        }
       }
     } else {
       // joint handles: dragging an endpoint re-sizes the links that meet there
