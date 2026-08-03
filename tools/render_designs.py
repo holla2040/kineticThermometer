@@ -7,6 +7,7 @@ contact sheet.
 
     python3 tools/render_designs.py designs.json outdir/   # raw search output
     python3 tools/render_designs.py --presets out.png      # the shipped example-* presets
+    python3 tools/render_designs.py --presets out.png /tmp/x clean-   # another family
 """
 import json, os, sys
 from playwright.sync_api import sync_playwright
@@ -105,8 +106,8 @@ PRESET_SETUP = """
 """
 
 
-def render_presets(out_png, tmpdir):
-    """Shoot every example-* preset exactly as the page ships it.
+def render_presets(out_png, tmpdir='/tmp/ct-presets', prefix='example-'):
+    """Shoot every preset whose name starts with `prefix`, as the page ships it.
 
     Reads the presets from index.html rather than designs.json, so the sheet can
     never show a curve the dropdown does not actually produce.
@@ -120,8 +121,9 @@ def render_presets(out_png, tmpdir):
         pg.on('pageerror', lambda e: errs.append(str(e)))
         pg.goto(PAGE); pg.wait_for_timeout(500)
         names = pg.eval_on_selector_all(
-            '#preset option', "e => e.map(o => o.value).filter(v => v.startsWith('example-'))")
-        assert names, 'no example-* presets in the dropdown'
+            '#preset option',
+            "(e, p) => e.map(o => o.value).filter(v => v.startsWith(p))", prefix)
+        assert names, f'no {prefix}* presets in the dropdown'
         for n in names:
             r = pg.evaluate(PRESET_SETUP, {'name': n})
             assert r['valid'] and r['chunks'] == 130, (n, r)
@@ -143,7 +145,7 @@ if __name__ == '__main__':
     if len(sys.argv) < 2:
         sys.exit(__doc__.strip())
     if sys.argv[1] == '--presets':
-        render_presets(sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else '/tmp/ct-presets')
+        render_presets(sys.argv[2], *sys.argv[3:5])
         sys.exit(0)
     data = json.load(open(sys.argv[1]))
     outdir = sys.argv[2]

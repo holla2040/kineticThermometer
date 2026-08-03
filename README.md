@@ -151,6 +151,7 @@ The jump column is what one press of the ↑ key does — 0.1″ of actuator tra
 
 | preset | closest approach to dead center | worst jump per 0.1″ of actuator |
 |---|--:|--:|
+| `clean-01`, `clean-03`, `clean-07` | **40.0° – 50.1°** | **0.7″ – 1.1″** |
 | Grand Arc | 33.9° | 0.5″ |
 | Serpentine | 7.7° | 2.3″ |
 | `example-00` … `example-10` | **0.06° – 5.9°** | **4.6″ – 28.9″** |
@@ -173,6 +174,45 @@ watch pins C and D. Regenerate this sheet with
 `python3 tools/render_designs.py --presets contact-sheet.png`, which reads the
 presets out of `index.html` rather than a saved file, so it cannot show a curve
 the menu does not actually produce.
+
+### The same search, told to stay away from the edge
+
+The `clean-*` presets are the answer to the obvious follow-up question: if the
+search only found those eleven because nothing stopped it, what does it find when
+something does? `tools/explore_designs.py` now measures the transmission angle at
+C and D exactly the way the page does, and `--tamin 40` refuses any design that
+drops below the 40° figure this section recommends.
+
+The run produced ten; the owner kept these three, as the rest were variations on
+two shapes rather than three distinct ones.
+
+![The three clean presets, each showing the curve its indicator traces and the
+scale length in inches: two open C-curves of 111 and 107 inches and a tighter
+64-inch curve](contact-sheet-clean.png)
+
+    python3 tools/explore_designs.py --tamin 40 --minlen 60 --trials 3000000
+    python3 tools/render_designs.py --presets contact-sheet-clean.png /tmp/x clean-
+
+Three things that run of the search settled, all of them worth knowing before you
+draw a curve you like and then go looking for a linkage that traces it:
+
+- **Healthy is common; healthy *and* long is not.** 94% of assemblable random
+  geometries keep 10° or better. But in 2.4 million random trials, not one reached
+  40° with even a 70″ scale. Every one of these ten had to be hill-climbed to.
+- **Above 40° the loops are simply gone.** Not rare — absent. Every `clean-*`
+  curve is an arc, an open spiral or an S; the crossings, cusps and tight hooks
+  that make `example-01` and `example-07` fun to watch are the *shape of the
+  singularity*, and they cannot be had at a safe transmission angle. The prettiest
+  curves in the menu are the ones you must not build.
+- **You pay for it in scale length, and less than you would think.** The kept
+  designs run 64″–111″ against the examples' 91″–201″, and get a linkage that
+  cannot flip branch in a gust of wind.
+
+They come out ahead on the fabrication rule too, which was not asked of them:
+each keeps its mounts **2.89″–4.10″** off the engraved path, clearing the 2.5″
+rule that the chosen serpentine misses at 2.06″. That is luck, not design — a
+design far from dead center is not automatically buildable, and `clean-*` still
+needs the rest of `analyze_geometry.py` run over it before anyone cuts metal.
 
 ### What goes wrong, part one: the scale becomes unreadable
 
@@ -220,7 +260,9 @@ Three things, all live:
   travel that is inside the danger zone — so you can see the size of the problem
   with the animation paused. Turn on **Inner curves** in the Display section.
 
-Load `serpentine` and then `example-05` and watch the difference.
+Load `example-05` and then `clean-08` and watch the difference: the first flashes
+red at C and D and throws the ring across the piece, the second never colours at
+all.
 
 ### If you are building one of these
 
@@ -242,7 +284,9 @@ Load `serpentine` and then `example-05` and watch the difference.
    would jam, stall or snap through.
 
 The eleven `example-*` presets are in the menu precisely so you can see all of
-this happening in something real, rather than take it on trust.
+this happening in something real, rather than take it on trust — and the
+`clean-*` ones so you can see what the same search produces when rule 2 is
+enforced instead of hoped for.
 
 ## Exporting for CAD
 

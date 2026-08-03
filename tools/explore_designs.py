@@ -22,6 +22,9 @@ as-modeled clamp position, full stroke. Finalists are also reported against the
 generic 24"+18" actuator at 0-15.5" so a design can be built either way.
 
     python3 tools/explore_designs.py --trials 20000000 --out designs.json
+
+Runs are memory-hungry in proportion to --batch; see its comment in main() before
+starting several at once.
 """
 import argparse, json, math, os, sys, warnings
 import numpy as np
@@ -79,11 +82,25 @@ def circ_int(px, py, r0, qx, qy, r1, sign):
     return np.where(ok, x, np.nan), np.where(ok, y, np.nan), ok
 
 
+def trans_angles(Bx, By, Cx, Cy, gx, gy, L3, L4):
+    """Transmission angle at a circle-crossing joint, folded into 0..90 degrees.
+
+    Same definition as index.html's transAngle(): the angle at C between the link
+    arriving (C->B) and the link being driven (C->O4). 90 is ideal, 0 is dead
+    center. The two norms are the link lengths, so no hypot is needed.
+    """
+    with np.errstate(invalid='ignore', divide='ignore'):
+        dot = (Bx - Cx) * (gx - Cx) + (By - Cy) * (gy - Cy)
+        d = np.degrees(np.arccos(np.clip(dot / (L3 * L4), -1, 1)))
+    return np.minimum(d, 180 - d)
+
+
 def trace(G, L, joints=False):
     """G (N,18), L (S,) -> Qx, Qy (N,S), ok (N,).
 
     ok is True only when the design assembles at EVERY sample — the same thing
-    index.html's rangeValid() means.
+    index.html's rangeValid() means. With joints=True the dict also carries `ta`,
+    the worse of the two transmission angles at each sample.
     """
     rA = G[:, 0:1]; dA = G[:, 1:2]; anch = G[:, 2:3]
     gx = G[:, 3:4]; gy = G[:, 4:5]; L2 = G[:, 5:6]; L3 = G[:, 6:7]; L4 = G[:, 7:8]
@@ -108,8 +125,10 @@ def trace(G, L, joints=False):
     Qx, Qy = Px + cu2 * vx - cv2 * vy, Py + cu2 * vy + cv2 * vx
     ok = (fits & okC & okD & np.isfinite(Qx) & np.isfinite(Qy)).all(axis=1)
     if joints:
+        ta = np.minimum(trans_angles(Bx, By, Cx, Cy, gx, gy, L3, L4),
+                        trans_angles(Px, Py, Dx, Dy, ox, oy, L5, L6))
         return Qx, Qy, ok, dict(R=(rA * ct, rA * st), B=(Bx, By), C=(Cx, Cy),
-                                P=(Px, Py), D=(Dx, Dy))
+                                P=(Px, Py), D=(Dx, Dy), ta=ta)
     return Qx, Qy, ok
 
 
@@ -126,16 +145,23 @@ def scale_length(Qx, Qy):
     return np.hypot(np.diff(Qx, axis=1), np.diff(Qy, axis=1)).sum(axis=1)
 
 
-def envelope(G, L):
+JKEYS = ('R', 'B', 'C', 'P', 'D')
+
+
+def envelope_of(G, Qx, Qy, J):
     """(N,2) width/height of everything the piece sweeps: path, joint traces, mounts."""
-    Qx, Qy, ok, J = trace(G, L, joints=True)
-    X = [Qx] + [J[k][0] for k in J] + [mounts_of(G)[:, :, 0]]
-    Y = [Qy] + [J[k][1] for k in J] + [mounts_of(G)[:, :, 1]]
+    X = [Qx] + [J[k][0] for k in JKEYS] + [mounts_of(G)[:, :, 0]]
+    Y = [Qy] + [J[k][1] for k in JKEYS] + [mounts_of(G)[:, :, 1]]
     X = np.concatenate(X, axis=1); Y = np.concatenate(Y, axis=1)
     with np.errstate(invalid='ignore'):
         w = np.nanmax(X, 1) - np.nanmin(X, 1)
         h = np.nanmax(Y, 1) - np.nanmin(Y, 1)
     return np.nan_to_num(w, nan=1e6), np.nan_to_num(h, nan=1e6)
+
+
+def envelope(G, L):
+    Qx, Qy, ok, J = trace(G, L, joints=True)
+    return envelope_of(G, Qx, Qy, J)
 
 
 def turn_stats(Qx, Qy):
@@ -209,9 +235,11 @@ def measure(G, L, shape_from=None):
     metrics are read off a path decimated to ~SHAPE_N points, so they mean the
     same thing whether L is the 141-sample search grid or the dense re-measure.
     """
-    Qx, Qy, ok = trace(G, L)
+    Qx, Qy, ok, J = trace(G, L, joints=True)
     plen = scale_length(Qx, Qy)
-    w, h = envelope(G, L)
+    w, h = envelope_of(G, Qx, Qy, J)
+    with np.errstate(invalid='ignore'):
+        ta = np.nanmin(J['ta'], axis=1)          # worst approach to dead center
     k = max(1, Qx.shape[1] // SHAPE_N)
     Sx, Sy = (Qx, Qy) if k == 1 else (Qx[:, ::k], Qy[:, ::k])
     pos, neg, rev, wig = turn_stats(Sx, Sy)
@@ -232,7 +260,7 @@ def measure(G, L, shape_from=None):
     else:
         stall = rush = np.full(len(seg), np.nan)
     return dict(ok=ok, plen=plen, w=w, h=h, pos=pos, neg=neg, rev=rev, wig=wig,
-                cross=cr, dens=dens, clear=mount_clear(G, Qx, Qy),
+                cross=cr, dens=dens, clear=mount_clear(G, Qx, Qy), ta=np.nan_to_num(ta),
                 stall=stall, rush=rush,
                 segmin=np.nanmin(seg, 1), segmax=np.nanmax(seg, 1))
 
@@ -243,6 +271,7 @@ BAD = -1e9
 
 STALL_MIN = 0.15       # in/degF, the original search's min-segment rule
 STALL_GATE = 0.07      # what the owner's own tuned serpentine manages (0.075)
+TA_MIN = 0.0           # degrees; set from --tamin. 0 = the pre-2026-08-03 behaviour
 
 
 def _quality(m):
@@ -255,8 +284,15 @@ def _quality(m):
     search that rewards character without pricing stalls just rediscovers it.
     """
     stall = np.nan_to_num(m['stall'], nan=STALL_MIN)
+    # The dead-center term dominates everything else on purpose. A long scale and a
+    # near-singular linkage are the SAME geometry (README, "Dead center"): the
+    # indicator sweeps furthest for the least input right where the two assembly
+    # branches merge. Any objective that prices length without pricing this walks
+    # straight back to the edge — which is exactly how example-00..10 got there.
+    # Below the gate the penalty is linear, so the climb still has a gradient home.
     return (3.0 * np.clip(m['clear'] - 2.5, -2.5, 1.0)
-            + 300.0 * np.clip(stall - STALL_MIN, -0.15, 0.0))
+            + 300.0 * np.clip(stall - STALL_MIN, -0.15, 0.0)
+            + 60.0 * np.clip(m['ta'] - TA_MIN, -TA_MIN, 0.0))
 
 
 def score_length(m, maxw, maxh):
@@ -268,6 +304,7 @@ def score_length(m, maxw, maxh):
 # What separates "has personality" from "is a big arc". A pure length objective
 # converges on a near-circle; these three are the things a circle cannot do.
 G_BOTH, G_REV, G_WIG = 1.5, 3.0, 0.8      # rad turned each way, reversals, curvature CoV
+MIN_LEN = 80.0                            # the character set's floor on scale length
 
 
 def score_character(m, maxw, maxh):
@@ -276,25 +313,32 @@ def score_character(m, maxw, maxh):
     # staged, so the climb always has a gradient: reach 80", then clear the
     # character gates, then compete on how much personality there is
     gate = (np.minimum(both / G_BOTH, 1) + np.minimum(m['rev'] / G_REV, 1)
-            + np.minimum(m['wig'] / G_WIG, 1) + np.minimum(stall / STALL_GATE, 1))
+            + np.minimum(m['wig'] / G_WIG, 1) + np.minimum(stall / STALL_GATE, 1)
+            + (np.minimum(m['ta'] / TA_MIN, 1) if TA_MIN > 0 else 1.0))
     ch = (500.0
           + 14.0 * np.minimum(m['cross'], 6)
           + 8.0 * np.minimum(both, 4.0)
           + 3.0 * np.minimum(m['rev'], 12)
           + 10.0 * np.minimum(m['wig'], 3.0)
           + 6.0 * np.minimum(m['dens'], 4.0)
-          + _quality(m)
+          + 2.0 * np.minimum(np.maximum(m['ta'] - TA_MIN, 0.0), 15.0)
           + 0.02 * m['plen'])
-    s = np.where(m['plen'] < 80.0, m['plen'] - 1000.0,
-                 np.where(gate < 3.999, 100.0 * gate, ch))
+    # _quality rides EVERY stage, not just the last. Left out of the length stage it
+    # was a trapdoor: the climb maximised raw length with no dead-center pressure at
+    # all, arrived at 80" sitting on the singularity, and then had to climb back out
+    # of a basin it had just spent 400 iterations digging.
+    q = _quality(m)
+    s = q + np.where(m['plen'] < MIN_LEN, m['plen'] - 1000.0,
+                     np.where(gate < 4.999, 100.0 * gate, ch))
     bad = ~m['ok'] | (m['w'] > maxw) | (m['h'] > maxh)
     return np.where(bad, BAD, s)
 
 
 def gates_met(m):
-    return ((m['plen'] >= 80.0) & (np.minimum(m['pos'], m['neg']) >= G_BOTH)
+    return ((m['plen'] >= MIN_LEN) & (np.minimum(m['pos'], m['neg']) >= G_BOTH)
             & (m['rev'] >= G_REV) & (m['wig'] >= G_WIG)
-            & (np.nan_to_num(m['stall'], nan=0.0) >= STALL_GATE) & m['ok'])
+            & (np.nan_to_num(m['stall'], nan=0.0) >= STALL_GATE)
+            & (m['ta'] >= TA_MIN) & m['ok'])
 
 
 # ---------- vectorized hill climb ----------
@@ -343,7 +387,7 @@ def pick_varied(G, m, sc, keep, ok):
     Both passes keep a parameter-distance guard.
     """
     rank = [i for i in np.argsort(-sc) if ok[i]]
-    band = np.digitize(m['plen'], [95, 115, 145, 190])
+    band = np.digitize(m['plen'], MIN_LEN * np.array([1.2, 1.45, 1.8, 2.4]))
     out, seen = [], set()
     # Self-crossing is the thing the owner named first, so fill from the curves
     # that actually loop before letting a merely-wavy one in. Passes:
@@ -380,14 +424,18 @@ def from_dict(d):
 DENSE = 1301          # finalists are re-measured this finely; analyze_geometry.py's N
 
 
-def finalize(g, maxw, maxh):
+def finalize(g, maxw, maxh, tamin=0.0):
     """Re-measure one finalist densely. The 141-sample search length is a ~1%
     underestimate on a curvy path, and a design valid at 141 samples can still
     drop a chunk at the 781 the page draws with. Returns None if it fails dense.
+
+    The transmission angle is re-checked here too, and this is not a formality: a
+    dip toward dead center is narrow in the actuator's travel, so a coarse grid
+    can step straight over one.
     """
     L = drive_lengths(DENSE)
     m = measure(g[None, :], L)
-    if not m['ok'][0] or m['w'][0] > maxw or m['h'][0] > maxh:
+    if not m['ok'][0] or m['w'][0] > maxw or m['h'][0] > maxh or m['ta'][0] < tamin:
         return None
     _, _, okg = trace(g[None, :], drive_lengths(DENSE, joyce=False))
     r = row(m, 0)
@@ -434,7 +482,7 @@ def merge(paths, out, keep_long, keep_creative, maxw, maxh):
            'longest': [], 'creative': []}
     for tag, ix in (('longest', ixA), ('creative', ixB)):
         for i in ix:
-            r = finalize(G[i], maxw, maxh)
+            r = finalize(G[i], maxw, maxh, TA_MIN)
             if r is not None:
                 res[tag].append({'geo': to_dict(G[i]), 'metrics': r})
     json.dump(res, open(out, 'w'), indent=1)
@@ -445,7 +493,7 @@ def merge(paths, out, keep_long, keep_creative, maxw, maxh):
 
 def report(out):
     hdr = (f'{"":4}{"len":>7} {"loops":>5} {"rev":>4} {"wig":>5} {"both":>5} '
-           f'{"dens":>5}  envelope  clear  stall  gen')
+           f'{"dens":>5}  envelope  clear  stall  {"trans":>5}  gen')
     for tag in ('baseline', 'longest', 'creative'):
         if tag not in out:
             continue
@@ -454,26 +502,47 @@ def report(out):
             m = d['metrics']
             print(f'  {i+1:>2}.{m["plen"]:7.1f} {m["cross"]:5.0f} {m["rev"]:4.0f} {m["wig"]:5.2f}'
                   f' {min(m["pos"], m["neg"]):5.2f} {m["dens"]:5.2f}  {m["w"]:4.1f}x{m["h"]:<4.1f}'
-                  f' {m["clear"]:5.2f}  {m["stall"]:5.3f}  {"y" if m["generic_ok"] else "n"}')
+                  f' {m["clear"]:5.2f}  {m["stall"]:5.3f}  {m["ta"]:5.1f}  '
+                  f'{"y" if m["generic_ok"] else "n"}')
 
 
 def main():
+    global TA_MIN, G_BOTH, G_REV, G_WIG, MIN_LEN
     ap = argparse.ArgumentParser()
     ap.add_argument('--merge', nargs='+', help='pool several run outputs and re-select')
     ap.add_argument('--emit', type=int, default=0, help='candidates per set (0 = 5 and 10)')
     ap.add_argument('--trials', type=int, default=20_000_000)
-    ap.add_argument('--batch', type=int, default=60_000)
+    # Peak RSS is roughly batch * nsamp * 8 bytes * ~25 live arrays: 12k x 261 is
+    # about 0.6 GB, and 60k x 261 is over 3 GB. Multiply by however many runs you
+    # start in parallel — eight of those is an out-of-memory kill, not a fast search.
+    ap.add_argument('--batch', type=int, default=12_000)
     ap.add_argument('--nsamp', type=int, default=261)      # finer than index.html's
     # 141-sample rangeValid, and 260 segments = exactly 2 per degree F so the search
     # can see a stall; finalists are re-checked at DENSE anyway
     ap.add_argument('--maxw', type=float, default=48.0)    # garden-piece envelope,
     ap.add_argument('--maxh', type=float, default=48.0)    # cf. serpentine 40.7x30.8
+    ap.add_argument('--tamin', type=float, default=0.0,
+                    help='minimum transmission angle at C and D over the whole range, '
+                         'in degrees. README recommends 40; Grand Arc manages 33.9 and '
+                         'the serpentine 7.7. 0 reproduces the original search.')
+    ap.add_argument('--minlen', type=float, default=MIN_LEN,
+                    help='scale-length floor for the character set. Buying length at a '
+                         'high --tamin costs shape, so lower this to trade one for the '
+                         'other; the serpentine is 82 inches and Grand Arc 56.')
+    ap.add_argument('--character', type=float, nargs=3, metavar=('BOTH', 'REV', 'WIG'),
+                    default=[G_BOTH, G_REV, G_WIG],
+                    help='character gates: radians turned each way, curvature reversals, '
+                         'curvature CoV. Reachable together with a high --tamin only if '
+                         'lowered — a healthy linkage draws a smoother curve.')
     ap.add_argument('--seeds', type=int, default=600)
     ap.add_argument('--iters', type=int, default=1200)
     ap.add_argument('--seed', type=int, default=7)
     ap.add_argument('--out', default='designs.json')
     a = ap.parse_args()
     nA, nB = (a.emit, a.emit) if a.emit else (5, 10)
+    TA_MIN = a.tamin
+    MIN_LEN = a.minlen
+    G_BOTH, G_REV, G_WIG = a.character
 
     if a.merge:
         merge(a.merge, a.out, nA, nB, a.maxw, a.maxh)
@@ -489,13 +558,19 @@ def main():
     while done < a.trials:
         n = min(a.batch, a.trials - done)
         G = sample_box(rng, n); done += n
-        Qx, Qy, ok = trace(G, L)
+        Qx, Qy, ok, J = trace(G, L, joints=True)
         if not ok.any():
             continue
         G = G[ok]; nfeas += len(G)
-        pl = scale_length(Qx[ok], Qy[ok])
-        w, h = envelope(G, L)
-        good = (pl > 45.0) & (w <= a.maxw * 1.4) & (h <= a.maxh * 1.4)
+        Qx, Qy = Qx[ok], Qy[ok]
+        pl = scale_length(Qx, Qy)
+        w, h = envelope_of(G, Qx, Qy, {k: (J[k][0][ok], J[k][1][ok]) for k in JKEYS})
+        with np.errstate(invalid='ignore'):
+            ta = np.nan_to_num(np.nanmin(J['ta'][ok], axis=1))
+        # seeds start at half the gate: the climb can lift a design's transmission
+        # angle, but not from 0.5 deg to 40 — those live in a different basin.
+        good = ((pl > 45.0) & (w <= a.maxw * 1.4) & (h <= a.maxh * 1.4)
+                & (ta >= 0.5 * TA_MIN))
         if good.any():
             pool.append(G[good]); keys.append(pl[good])
         if done % (a.batch * 40) < a.batch:
@@ -529,13 +604,14 @@ def main():
     out = {'meta': {'actuator': 'joyce QS11940, aClamp 23.23, ext 0-16',
                     'driven_len': [float(L[0]), float(L[-1])],
                     'envelope_cap': [a.maxw, a.maxh], 'trials': a.trials,
-                    'gates': {'plen': 80.0, 'bothways': G_BOTH, 'rev': G_REV, 'wiggle': G_WIG}},
+                    'gates': {'plen': MIN_LEN, 'bothways': G_BOTH, 'rev': G_REV,
+                              'wiggle': G_WIG, 'trans_angle': a.tamin}},
            'baseline': {'geo': SERPENTINE,
                         'metrics': finalize(from_dict(SERPENTINE), 1e9, 1e9)},
            'longest': [], 'creative': []}
     for tag, B, ix in (('longest', BA, ixA), ('creative', BB, ixB)):
         for i in ix:
-            r = finalize(B[i], a.maxw, a.maxh)
+            r = finalize(B[i], a.maxw, a.maxh, a.tamin)
             if r is None:
                 print(f'  dropped a {tag} finalist: fails at dense sampling', flush=True)
                 continue
@@ -577,6 +653,16 @@ def _selfcheck():
     Qx = np.linspace(-5, 5, 51)[None, :]
     assert abs(mount_clear(G, Qx, np.zeros((1, 51)), step=1)[0]) < 1e-12   # O2 on the path
     assert abs(mount_clear(G, Qx, np.full((1, 51), 4.0), step=1)[0] - 1.0) < 1e-12  # ACT 1" off
+    # transmission angle: C at the origin with B up the y axis and O4 out the x axis
+    # is the square 90 deg case; swinging O4 round to +y and to -y are both dead
+    # center, because 180 deg is as collinear as 0.
+    z = np.zeros((1, 1)); one = np.ones((1, 1))
+    ang = lambda ox, oy: trans_angles(z, one, z, z, np.array([[ox]], float),
+                                      np.array([[oy]], float), one, one)[0, 0]
+    assert abs(ang(1, 0) - 90) < 1e-9, ang(1, 0)
+    assert abs(ang(0, -1)) < 1e-6, ang(0, -1)
+    assert abs(ang(0, 1)) < 1e-6, ang(0, 1)
+    assert abs(ang(math.cos(math.radians(30)), -math.sin(math.radians(30))) - 60) < 1e-9
     print('selfcheck ok')
 
 

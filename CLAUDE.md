@@ -109,9 +109,35 @@ Grand Arc: rA=20.8 dA=31.7 anch=166.7° gx=-3.8 gy=-0.1 L2=11.9 L3=11.8
 L4=12.6 cu=19.6 cv=-5.2 s1=-1 ox=7.7 oy=-7.6 L5=8.5 L6=13.5 cu2=19.3
 cv2=-12.0 s2=-1  → ~66″ of scale.
 
+**Gallery presets.** Two families, both Joyce (`actT:1`), both found by
+`tools/explore_designs.py`, neither offered as a build candidate:
+
+- `example-00`…`example-10` (2026-08-03) — the length search. All eleven ride
+  dead center, 0.06°–5.9° minimum transmission angle, marked `*` in the menu.
+- `clean-01`, `clean-03`, `clean-07` (2026-08-04) — the same search under
+  `--tamin 40`. 40.0°–50.1°, scale 64″–111″, mount clearance 2.89″–4.10″ (all
+  clear the 2.5″ rule the serpentine misses). No `*`. The run emitted ten; the
+  owner kept these three and cut the other seven as **variations on two shapes**
+  — `clean-00..04` were one theme and `clean-05..09` another, and 03 and 04 were
+  effectively the same curve. Numbering is deliberately non-contiguous: the names
+  are the ones the owner picked by, so don't renumber them.
+
+The finding worth not re-deriving: **loops and cusps ARE the singularity.** Above
+40° there are none — not rare, absent. Every clean design is an arc, an open
+spiral or an S. Also: 94% of assemblable random geometries clear 10°, but 2.4M
+random trials produced ZERO at 40° with a 70″ scale, so the clean set exists only
+because the hill climb reaches it. Don't retry this with random sampling.
+
 `tools/search_geometry.py` reproduces the constrained random search.
 `tools/verify_export.py` drives the page headless and checks the named-save
 flow plus both DXF exports (`python3 tools/verify_export.py [outdir]`).
+
+`tools/explore_designs.py` measures the transmission angle at C and D exactly as
+index.html's `transAngle()` does; `crosscheck_port.py` asserts the two agree to
+1e-9 along with the path itself. Gates are `--tamin`, `--minlen` and
+`--character BOTH REV WIG`. **Watch `--batch`**: peak RSS is roughly
+`batch × nsamp × 8 × 25` bytes, so the old 60k default was >3 GB per process and
+eight in parallel OOM'd this machine on 2026-08-04. Default is now 12k.
 
 ## How the solver works (index.html, ~pose())
 

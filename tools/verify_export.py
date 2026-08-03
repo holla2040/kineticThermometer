@@ -989,6 +989,43 @@ with sync_playwright() as p:
           f"checkbox suppresses it, free-form drag goes red and heals")
     assert not errs, errs
 
+    # 13. the two gallery families are what the menu and the README say they are.
+    # clean-* is the whole point of --tamin: every one stays clear of dead center
+    # across the shipped range. example-* is the counter-example and must NOT be
+    # quietly "fixed" into the safe zone, or the dead-center section loses its
+    # subject. The angle is measured the way index.html's transAngle() does.
+    fam = pg.evaluate("""() => {
+      const ta = (a,b,o) => { const ux=b.x-a.x,uy=b.y-a.y,vx=o.x-a.x,vy=o.y-a.y;
+        const n=Math.hypot(ux,uy)*Math.hypot(vx,vy); if(n<1e-9) return 0;
+        const d=Math.acos(Math.max(-1,Math.min(1,(ux*vx+uy*vy)/n)))*180/Math.PI;
+        return Math.min(d,180-d); };
+      const sel = document.getElementById('preset'), out = {};
+      for (const o of sel.options) {
+        if (!/^(clean|example)-/.test(o.value)) continue;
+        sel.value = o.value; sel.dispatchEvent(new Event('change', {bubbles:true}));
+        let t = 1e9, ok = true;
+        for (let i = 0; i <= 400; i++) {
+          const p = __ct.pose(__ct.cfg.tmin + (__ct.cfg.tmax-__ct.cfg.tmin)*i/400);
+          if (!p.valid) { ok = false; break; }
+          t = Math.min(t, ta(p.C,p.B,p.O4), ta(p.D,p.P,p.O6));
+        }
+        out[o.value] = {ok, t};
+      }
+      return out; }""")
+    clean = {k: v for k, v in fam.items() if k.startswith("clean-")}
+    exam = {k: v for k, v in fam.items() if k.startswith("example-")}
+    assert clean and len(exam) == 11, f"{len(clean)} clean, {len(exam)} example"
+    for k, v in fam.items():
+        assert v["ok"], f"{k} does not assemble across the shipped range"
+    bad = {k: v["t"] for k, v in clean.items() if v["t"] < 40.0}
+    assert not bad, f"clean presets must stay at or above 40 deg: {bad}"
+    notbad = {k: v["t"] for k, v in exam.items() if v["t"] >= 6.0}
+    assert not notbad, f"example presets are the dead-center exhibit: {notbad}"
+    lo = min(v["t"] for v in clean.values()); hi = max(v["t"] for v in clean.values())
+    print(f"gallery: {len(clean)} clean presets {lo:.1f}-{hi:.1f} deg from dead center, "
+          f"11 example presets all inside 6 deg")
+    assert not errs, errs
+
     pg.screenshot(path=os.path.join(OUT,"panel.png"))
     b.close()
 print("\nALL CHECKS PASSED")
