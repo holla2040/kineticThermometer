@@ -110,7 +110,7 @@ L4=12.6 cu=19.6 cv=-5.2 s1=-1 ox=7.7 oy=-7.6 L5=8.5 L6=13.5 cu2=19.3
 cv2=-12.0 s2=-1  → ~66″ of scale.
 
 **Gallery presets.** Three families, all Joyce (`actT:1`), all found by
-`tools/explore_designs.py`, none offered as a build candidate:
+`tools/explore_designs.py`:
 
 - `example-00`…`example-10` (2026-08-03) — the length search. All eleven ride
   dead center, 0.06°–5.9° minimum transmission angle, marked `*` in the menu.
@@ -140,13 +140,20 @@ cv2=-12.0 s2=-1  → ~66″ of scale.
   is always MATCHED at dead center and buying safety costs shape drift at a
   measured rate; and two of the five picked drawings (prop-11's double
   spiral, prop-08's grand ribbon) are beyond this mechanism outright.
-  **The family is COMPLETE at six** (owner, 2026-08-03) — don't extend it.
-  NOT clean — none reaches 40°; `verify_export.py` §13 pins each preset's
-  angle to its label value ±0.5° inside [6°, 40°).
+  The family was declared complete at six, then REOPENED the same day for
+  round 2, briefed in `SHAPE-PLAN.md`.
+- `shape-07`…`shape-10` (2026-08-03, round 2) — owner picked prop-01, prop-03,
+  prop-07, prop-11 and prop-15 from `proposals2.png`; the same match/refine/lift
+  pipeline produced `verdict2.png`. The owner chose tiles #5, #10, #13 and #19,
+  shipped in that order at 15.4° / 12.2° / 8.3° / 7.7°. Labels are 36″/48″/77″/52″,
+  page-measured at 0–15.5″ after rounding geometry to four decimals. Prop-07 was
+  unreachable as drawn (best distance 6.49); tile #13 is the explicitly labelled
+  buildable best attempt, not a close match. `verify_export.py` §13 pins every
+  `shape-*` angle to its measured value ±0.5° inside [6°, 40°).
 
-The six clean: 40.0°–50.1°, scale 55″–111″, mount clearance 2.89″–10.37″ (all
-clear the 2.5″ rule the serpentine misses; the six shape-* clear it too at
-2.6″–9.4″). Numbering is deliberately non-contiguous — the names are the ones
+The six clean: 40.0°–50.1°, scale 55″–111″, mount clearance 2.89″–10.37″. The
+ten shape-* presets clear the mount rule at 2.542″–9.430″. Numbering is
+deliberately non-contiguous — the names are the ones
 the owner picked by, so don't renumber them.
 
 **A wrong finding, recorded so it is not re-derived:** the first run's output made

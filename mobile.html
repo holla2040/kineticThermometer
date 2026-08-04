@@ -224,6 +224,10 @@
       <option value="shape-04">shape-04 — 43&Prime; scale · 6° min</option>
       <option value="shape-05">shape-05 — 35&Prime; scale · 14° min</option>
       <option value="shape-06">shape-06 — 36&Prime; scale · 25° min</option>
+      <option value="shape-07">shape-07 — 36&Prime; scale · 15° min</option>
+      <option value="shape-08">shape-08 — 48&Prime; scale · 12° min</option>
+      <option value="shape-09">shape-09 — 77&Prime; scale · 8° min</option>
+      <option value="shape-10">shape-10 — 52&Prime; scale · 7° min</option>
       <option value="custom">Custom (your drag edits)</option>
     </select>
 
@@ -410,12 +414,10 @@
     slowest of the six, where <b>clean-01</b> never drops below 0.50″. Load
     <b>example-05</b>, then <b>clean-13</b>, and run the sweep.</p>
     <p>The <b>shape-*</b> presets are curves chosen for their looks first, then walked
-    as far from dead center as each shape allows. shape-01 and shape-02 hold the
-    shapes of example-08 and example-00 at <b>13°</b> and <b>16°</b>; shape-03 through
-    shape-06 began as freehand drawings that a matching search translated into this
-    mechanism, landing at <b>7°–25°</b>. None reaches the 40° that clean-* means —
-    the family trades margin for character, and each label carries its true minimum
-    angle.</p>
+    as far from dead center as each shape allows. shape-01 and shape-02 began as
+    mechanism curves; shape-03 through shape-10 began as freehand drawings that a
+    matching search translated into this mechanism. The ten land at <b>7°–25°</b>,
+    and each label carries its true minimum angle over the shipped 0–15.5″ excursion.</p>
 
     <h3>Saving and exporting</h3>
     <p>Type a name and press <b>Save</b> to keep a design in this browser; recall it from
@@ -534,6 +536,17 @@
     'shape-05':{rA:12.6059, dA:32.7832, anch:-82.939, gx:13.8511, gy:-10.8116, L2:14.6293, L3:10.0608, L4:11.412, cu:1.5468, cv:-13.1059, s1:1, ox:30.3836, oy:-4.9848, L5:17.5431, L6:11.1361, cu2:0.0, cv2:17.673, s2:-1,
                 actT:1, aLmin:24, aStroke:18, aClamp:23.23},
     'shape-06':{rA:10.3055, dA:29.5027, anch:82.4105, gx:-22.4564, gy:7.8327, L2:15.5863, L3:19.1124, L4:16.5553, cu:12.3053, cv:17.1993, s1:-1, ox:-18.1146, oy:11.0664, L5:10.8149, L6:11.8491, cu2:0.4788, cv2:-15.1877, s2:1,
+                actT:1, aLmin:24, aStroke:18, aClamp:23.23},
+    // shape-07..10: reverse-pipeline round 2 (2026-08-03), owner-picked from
+    // verdict2.png tiles #5, #10, #13 and #19. Rounded to four decimals and
+    // re-measured over the shipped 0-15.5 inch excursion before insertion.
+    'shape-07':{rA:10, dA:31.0126, anch:108.2016, gx:-21.1685, gy:16.5729, L2:16, L3:13.492, L4:21.9641, cu:12.6058, cv:-11.6115, s1:1, ox:-27.8376, oy:3.7633, L5:14.176, L6:13.2712, cu2:4.053, cv2:-0.2933, s2:1,
+                actT:1, aLmin:24, aStroke:18, aClamp:23.23},
+    'shape-08':{rA:10.018, dA:30.8258, anch:1.1754, gx:-7.8158, gy:16.184, L2:14.5608, L3:16.0175, L4:15.2689, cu:13.9404, cv:-15.6488, s1:-1, ox:-0.5142, oy:8.2997, L5:10.5604, L6:18.6413, cu2:0.8605, cv2:-12.8492, s2:1,
+                actT:1, aLmin:24, aStroke:18, aClamp:23.23},
+    'shape-09':{rA:10.2497, dA:29.8865, anch:52.17, gx:-16.5795, gy:4.7756, L2:13.7763, L3:15.5222, L4:18.0214, cu:11.8007, cv:16.1533, s1:1, ox:-4.8537, oy:-9.0395, L5:12.7114, L6:14.0287, cu2:0, cv2:15.9565, s2:-1,
+                actT:1, aLmin:24, aStroke:18, aClamp:23.23},
+    'shape-10':{rA:10.0511, dA:30.5393, anch:-138.4175, gx:1.1381, gy:-17.654, L2:15.6282, L3:15.0291, L4:14.4414, cu:1.1271, cv:-15.9216, s1:1, ox:-1.9845, oy:-28, L5:15.697, L6:14.3759, cu2:4.0865, cv2:1.8032, s2:1,
                 actT:1, aLmin:24, aStroke:18, aClamp:23.23}
   };
 

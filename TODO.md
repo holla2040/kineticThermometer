@@ -78,9 +78,14 @@ architecture in [CLAUDE.md](CLAUDE.md).
 - [x] Reverse pipeline for the rest: drawn proposals (`propose_shapes.py`) →
       owner picked five → approximate path synthesis + ta-lift ladders →
       owner chose four off the tagged verdict sheet at their 6° criterion:
-      `shape-03`…`shape-06` (7.5°/6.9°/14.0°/25.3°). Family complete at six
-      per the owner. Lesson recorded in REPORT.md: present ONLY designs
+      `shape-03`…`shape-06` (7.5°/6.9°/14.0°/25.3°). Lesson recorded in
+      REPORT.md: present ONLY designs
       tagged buildable/not — the trade-off ladders alone confused the pick.
+- [x] Reverse-pipeline round 2 (`SHAPE-PLAN.md`): owner picked five drawings,
+      every design in `verdict2.png` was numbered and tagged against the 6°,
+      2.5″ clearance, 0.07″/°F stall and 48×48″ gates, and tiles #5/#10/#13/#19
+      shipped as `shape-07`…`shape-10`. Prop-07 was unreachable as drawn at
+      best distance 6.49; the owner knowingly kept its buildable best attempt.
 
 ## Design decisions to re-confirm
 
