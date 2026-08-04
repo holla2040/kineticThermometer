@@ -1027,7 +1027,9 @@ with sync_playwright() as p:
     # value its menu label and the README quote, so silent drift fails here.
     # All are >= 6 (no * marker) and < 40 (none may be called clean).
     SHAPE_TA = {"shape-01": 13.1, "shape-02": 16.7, "shape-03": 7.5,
-                "shape-04": 6.9, "shape-05": 14.0, "shape-06": 25.3}
+                "shape-04": 6.9, "shape-05": 14.0, "shape-06": 25.3,
+                "shape-07": 15.4, "shape-08": 12.2, "shape-09": 8.3,
+                "shape-10": 7.7}
     assert set(shape) == set(SHAPE_TA), sorted(shape)
     off = {k: v["t"] for k, v in shape.items()
            if abs(v["t"] - SHAPE_TA[k]) > 0.5 or not (6.0 <= v["t"] < 40.0)}

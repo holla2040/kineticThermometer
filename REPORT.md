@@ -167,3 +167,28 @@ All four verifiers green; §13 pins each shape preset's angle to its label
 value. The shape family is complete at six per the owner. Lesson applied
 going forward: designs are presented ONLY with explicit numbered tiles and
 buildable/not tags at the owner's stated criterion.
+
+## Reverse pipeline round 2 (2026-08-03)
+
+The owner reopened the shape family and picked prop-01, prop-03, prop-07,
+prop-11 and prop-15 from `proposals2.png` (seed 29). The prescribed 3,000-seed
+pool, two independent match climbs, refinement climbs and transmission-angle
+lift ladders produced `verdict2.png`: 23 stable tile numbers, each tagged
+BUILDABLE / NOT BUILDABLE using all four owner gates over 0–15.5″.
+
+Prop-07 was unreachable as drawn: two match seeds stopped at distance 6.49 and
+6.55. The sheet says so plainly. Its best attempt was nevertheless buildable,
+and the owner selected that explicitly labelled tile along with three closer
+matches:
+
+| preset | tile | ta° | scale″ (0–15.5″) | clearance″ | stall ″/°F | envelope″ | from drawing |
+|---|---:|---:|---:|---:|---:|---:|---|
+| shape-07 | #5 | 15.4 | 36 | 4.192 | 0.140 | 41.1×43.8 | prop-01, dist 4.5 |
+| shape-08 | #10 | 12.2 | 48 | 2.542 | 0.146 | 41.7×46.8 | prop-03, dist 3.6 |
+| shape-09 | #13 | 8.3 | 77 | 6.372 | 0.119 | 47.1×47.0 | prop-07, best dist 6.49 |
+| shape-10 | #19 | 7.7 | 52 | 3.648 | 0.176 | 38.5×42.9 | prop-15, dist 3.3 |
+
+Geometry was rounded to four decimals before insertion, then labels and every
+gate were re-measured through the live page over the shipped range. Preset IDs
+continue at `shape-07`; no existing preset was renumbered. `verify_export.py`,
+`verify_mobile.py`, `sync_core.py` and `crosscheck_port.py` all pass.

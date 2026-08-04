@@ -142,9 +142,8 @@ crossing. Same event, two ways of describing it.
 
 ### How the presets measure up
 
-![Where each preset falls on the transmission-angle scale: the eleven search
-examples all sit in the red zone below 6 degrees, serpentine reaches 7.7 degrees
-and Grand Arc 33.9 degrees](images/dead-center-ruler.svg)
+![Where each preset falls on the transmission-angle scale, including the ten
+shape presets spanning 6.9 to 25.3 degrees](images/dead-center-ruler.svg)
 
 Every preset in the dropdown, worst case across its whole temperature range.
 The jump column is what one press of the ↑ key does — 0.1″ of actuator travel:
@@ -153,7 +152,7 @@ The jump column is what one press of the ↑ key does — 0.1″ of actuator tra
 |---|--:|--:|
 | the six `clean-*` | **40.0° – 50.1°** | **0.7″ – 1.9″** |
 | Grand Arc | 33.9° | 0.5″ |
-| the six `shape-*` | 6.9° – 25.3° | 0.4″ – 3.2″ |
+| the ten `shape-*` | 6.9° – 25.3° | 0.4″ – 3.2″ |
 | Serpentine | 7.7° | 2.3″ |
 | `example-00` … `example-10` | **0.06° – 5.9°** | **4.6″ – 28.9″** |
 
@@ -226,28 +225,28 @@ needs the rest of `analyze_geometry.py` run over it before anyone cuts metal.
 
 ### The same shapes, walked away from the edge
 
-The `shape-*` presets answer a third question: not "what does the search find
-when fenced off" but "can a shape chosen for its looks be moved to safety?"
-Two provenances, one method — hold a target curve's shape while the search
-climbs transmission angle:
+The `shape-*` presets answer: can a curve chosen for its looks be moved to a
+buildable transmission angle? The method holds a target curve's shape while
+the search climbs transmission angle:
 
-- `shape-01` / `shape-02` hold the shapes of example-08 and example-00 at
-  **13.1°** and **16.7°** — sixteen to twenty times the 0.8° margin those two
-  seeds ride, at the cost of some scale length (88″ vs 129″, 138″ vs 201″ as
-  shipped).
+- `shape-01` / `shape-02` began as mechanism-curve targets and land at
+  **13.1°** and **16.7°**.
 - `shape-03`…`shape-06` began as freehand drawings that never came from any
   linkage (`tools/propose_shapes.py`). An approximate-path-synthesis search
   (`explore_designs.py --targetpts --objective match`) found each drawing's
   closest mechanism curve, then climbed away from dead center holding that
   shape. The owner picked these four from a tagged sheet of every candidate;
   they land at **6.9°–25.3°**.
+- `shape-07`…`shape-10` repeat that drawing-first pipeline for round 2. The
+  owner selected verdict tiles **#5, #10, #13 and #19**, which land at
+  **15.4°**, **12.2°**, **8.3°** and **7.7°**. Prop-07 itself was unreachable;
+  its best distance was **6.49**, and `shape-09` is the buildable best-attempt
+  tile the owner selected with that limitation printed on the sheet.
 
-None reaches the 40° this section recommends, which is why the family is
-named `shape-*` and not `clean-*`: how far from the singularity is far enough
-is a judgment call, and every label carries its true minimum angle so nobody
-has to re-derive it. The full frontier — what each increment of shape drift
-buys in transmission angle, and which drawn shapes turned out to be
-unreachable outright — is in `REPORT.md`.
+All ten clear the owner's 6° line. Every label carries its true minimum over
+the shipped 0–15.5″ excursion so nobody has to re-derive it. The full frontier —
+what each increment of shape drift buys in transmission angle, and which drawn
+shapes turned out to be unreachable outright — is in `REPORT.md`.
 
 ### Asking for a shape you have not seen yet
 

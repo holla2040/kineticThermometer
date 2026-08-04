@@ -257,7 +257,7 @@ def ruler():
     # presets plotted BELOW the bar so nothing collides with the heading
     for nm, a, b, col, yy in (('the 11 search examples  (0.06° – 5.9°)', 0.06, 5.9, RED, 180),
                               ('serpentine  7.7°', 7.7, 7.7, AMBER, 209),
-                              ('the 6 shape presets  (6.9° – 25.3°)', 6.9, 25.3, AMBER, 238),
+                              ('the 10 shape presets  (6.9° – 25.3°)', 6.9, 25.3, AMBER, 238),
                               ('Grand Arc  33.9°', 33.9, 33.9, TEAL, 267),
                               ('the 6 clean presets  (40.0° – 50.1°)', 40.0, 50.1, TEAL, 296)):
         xa, xb = X(a), X(b)
