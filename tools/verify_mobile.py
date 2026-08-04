@@ -189,6 +189,11 @@ with sync_playwright() as p:
     d.goto(DESKTOP + "?desktop=1")
     d.wait_for_timeout(500)
     desktop_ids, mobile_ids = ids_of(d), ids_of(pg)
+    # option rows carry no ids, so the id diff below cannot see a preset present
+    # on one page and forgotten on the other - compare the value lists directly
+    opts = "() => [...document.querySelectorAll('#preset option')].map(o => o.value)"
+    d_opts, m_opts = d.evaluate(opts), pg.evaluate(opts)
+    assert d_opts == m_opts, f"preset dropdowns differ: {d_opts} vs {m_opts}"
     d.close()
     missing = desktop_ids - mobile_ids
     extra = mobile_ids - desktop_ids

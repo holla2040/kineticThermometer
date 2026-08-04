@@ -255,9 +255,11 @@ def ruler():
           txt(X(23), y + 32, 'workable, watch it', 11, AMBER),
           txt(X(65), y + 32, 'comfortable', 11, TEAL)]
     # presets plotted BELOW the bar so nothing collides with the heading
-    for nm, a, b, col, yy in (('the 11 search examples  (0.06° – 5.9°)', 0.06, 5.9, RED, 200),
-                              ('serpentine  7.7°', 7.7, 7.7, AMBER, 235),
-                              ('Grand Arc  33.9°', 33.9, 33.9, TEAL, 270)):
+    for nm, a, b, col, yy in (('the 11 search examples  (0.06° – 5.9°)', 0.06, 5.9, RED, 180),
+                              ('serpentine  7.7°', 7.7, 7.7, AMBER, 209),
+                              ('the 6 shape presets  (6.9° – 25.3°)', 6.9, 25.3, AMBER, 238),
+                              ('Grand Arc  33.9°', 33.9, 33.9, TEAL, 267),
+                              ('the 6 clean presets  (40.0° – 50.1°)', 40.0, 50.1, TEAL, 296)):
         xa, xb = X(a), X(b)
         if b > a:
             s.append(line(xa, yy, xb, yy, col, 6))
@@ -265,9 +267,9 @@ def ruler():
         s += [dot(xb, yy, 5, col), line(xb, y + 16, xb, yy - 7, col, 1.2, '3,3'),
               line(xb + 8, yy, lx - 8, yy, col, 1, '2,3'),
               txt(lx, yy + 4, nm, 12, col, 'start')]
-    s.append(txt(W / 2, 316, 'The two hand-tuned designs clear the red zone. Every '
-                 'search-found example sits inside it —', 12, MUTE))
-    s.append(txt(W / 2, 336, 'because the search was told to make the scale as long as possible, '
+    s.append(txt(W / 2, 322, 'Everything except the length-search examples clears the red zone; '
+                 'all eleven of them sit inside it —', 12, MUTE))
+    s.append(txt(W / 2, 342, 'because that search was told to make the scale as long as possible, '
                  'and that is exactly where length comes from.', 12, MUTE))
     return svg(W, H, ''.join(s), 'Where each preset falls on the transmission-angle scale')
 

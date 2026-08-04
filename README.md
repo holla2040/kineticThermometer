@@ -153,6 +153,7 @@ The jump column is what one press of the ↑ key does — 0.1″ of actuator tra
 |---|--:|--:|
 | the six `clean-*` | **40.0° – 50.1°** | **0.7″ – 1.9″** |
 | Grand Arc | 33.9° | 0.5″ |
+| the six `shape-*` | 6.9° – 25.3° | 0.4″ – 3.2″ |
 | Serpentine | 7.7° | 2.3″ |
 | `example-00` … `example-10` | **0.06° – 5.9°** | **4.6″ – 28.9″** |
 
@@ -222,6 +223,31 @@ each keeps its mounts **2.89″–10.37″** off the engraved path, clearing the
 rule that the chosen serpentine misses at 2.06″. That is luck, not design — a
 design far from dead center is not automatically buildable, and `clean-*` still
 needs the rest of `analyze_geometry.py` run over it before anyone cuts metal.
+
+### The same shapes, walked away from the edge
+
+The `shape-*` presets answer a third question: not "what does the search find
+when fenced off" but "can a shape chosen for its looks be moved to safety?"
+Two provenances, one method — hold a target curve's shape while the search
+climbs transmission angle:
+
+- `shape-01` / `shape-02` hold the shapes of example-08 and example-00 at
+  **13.1°** and **16.7°** — sixteen to twenty times the 0.8° margin those two
+  seeds ride, at the cost of some scale length (88″ vs 129″, 138″ vs 201″ as
+  shipped).
+- `shape-03`…`shape-06` began as freehand drawings that never came from any
+  linkage (`tools/propose_shapes.py`). An approximate-path-synthesis search
+  (`explore_designs.py --targetpts --objective match`) found each drawing's
+  closest mechanism curve, then climbed away from dead center holding that
+  shape. The owner picked these four from a tagged sheet of every candidate;
+  they land at **6.9°–25.3°**.
+
+None reaches the 40° this section recommends, which is why the family is
+named `shape-*` and not `clean-*`: how far from the singularity is far enough
+is a judgment call, and every label carries its true minimum angle so nobody
+has to re-derive it. The full frontier — what each increment of shape drift
+buys in transmission angle, and which drawn shapes turned out to be
+unreachable outright — is in `REPORT.md`.
 
 ### Asking for a shape you have not seen yet
 

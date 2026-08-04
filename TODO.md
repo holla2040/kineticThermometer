@@ -70,6 +70,18 @@ architecture in [CLAUDE.md](CLAUDE.md).
       Chromium at a 390×844 phone viewport. The `dvh`, safe-area and
       focus-zoom work is exactly the kind that only fails on the real device.
 
+## New scale-curve designs (SEARCH-PLAN.md) — DONE 2026-08-03
+
+- [x] Seeded transmission-angle search from example-08/example-00 — frontier
+      in REPORT.md. Owner kept two of twelve candidates: presets `shape-01`
+      (13°) and `shape-02` (16°).
+- [x] Reverse pipeline for the rest: drawn proposals (`propose_shapes.py`) →
+      owner picked five → approximate path synthesis + ta-lift ladders →
+      owner chose four off the tagged verdict sheet at their 6° criterion:
+      `shape-03`…`shape-06` (7.5°/6.9°/14.0°/25.3°). Family complete at six
+      per the owner. Lesson recorded in REPORT.md: present ONLY designs
+      tagged buildable/not — the trade-off ladders alone confused the pick.
+
 ## Design decisions to re-confirm
 
 - [ ] The scale is very uneven — 10°F steps run 0.79″ to 16.36″ (20.7×), and

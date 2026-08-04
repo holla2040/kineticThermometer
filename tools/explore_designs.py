@@ -33,6 +33,7 @@ import numpy as np
 warnings.filterwarnings('ignore', message='.*All-NaN.*')
 warnings.filterwarnings('ignore', message='.*Mean of empty slice.*')
 warnings.filterwarnings('ignore', message='.*empty slice.*')
+warnings.filterwarnings('ignore', message='.*Degrees of freedom.*')
 
 # ---------- actuator (matches index.html JOYCE / lenOf) ----------
 JOYCE_OFF, JOYCE_STROKE, ACLAMP = 2.378, 16.0, 23.23
@@ -306,13 +307,22 @@ def measure(G, L, shape_from=None):
     w, h = envelope_of(G, Qx, Qy, J)
     with np.errstate(invalid='ignore'):
         ta = np.nanmin(J['ta'], axis=1)          # worst approach to dead center
-    k = max(1, Qx.shape[1] // SHAPE_N)
-    Sx, Sy = (Qx, Qy) if k == 1 else (Qx[:, ::k], Qy[:, ::k])
+    # Decimate by INDEX LIST, never by stride: Qx[:, ::k] drops the final sample
+    # whenever k does not divide the count, and these curves end in a fast hook —
+    # at DENSE=1301 that read a D=5 finalist as tdist 9.8 when the converged value
+    # (2601+ samples, endpoint kept) is 4.9. Every resolution now measures ~the
+    # same SHAPE_N+1 stations, endpoint always included.
+    n = Qx.shape[1]
+    ix = np.linspace(0, n - 1, min(n, SHAPE_N + 1)).round().astype(int)
+    Sx, Sy = Qx[:, ix], Qy[:, ix]
     pos, neg, rev, wig = turn_stats(Sx, Sy)
     cr = crossings(Sx, Sy, step=max(1, Sx.shape[1] // 40))
     # distance from the nearest shape we were told to avoid; 1e9 when told nothing
     nov = (shape_dist(turning_desc(Sx, Sy), AVOID).min(axis=1)
            if AVOID is not None else np.full(len(Qx), 1e9))
+    # ...and from the nearest shape we were told to keep; 0 when told nothing
+    tdist = (shape_dist(turning_desc(Sx, Sy), TARGET).min(axis=1)
+             if TARGET is not None else np.zeros(len(Qx)))
     diag = np.hypot(w, h)
     seg = np.hypot(np.diff(Qx, axis=1), np.diff(Qy, axis=1))
     with np.errstate(invalid='ignore', divide='ignore'):
@@ -330,7 +340,7 @@ def measure(G, L, shape_from=None):
         stall = rush = np.full(len(seg), np.nan)
     return dict(ok=ok, plen=plen, w=w, h=h, pos=pos, neg=neg, rev=rev, wig=wig,
                 cross=cr, dens=dens, clear=mount_clear(G, Qx, Qy), ta=np.nan_to_num(ta),
-                nov=np.nan_to_num(nov),
+                nov=np.nan_to_num(nov), tdist=np.nan_to_num(tdist),
                 stall=stall, rush=rush,
                 segmin=np.nanmin(seg, 1), segmax=np.nanmax(seg, 1))
 
@@ -344,6 +354,8 @@ STALL_GATE = 0.07      # what the owner's own tuned serpentine manages (0.075)
 TA_MIN = 0.0           # degrees; set from --tamin. 0 = the pre-2026-08-03 behaviour
 NOV_MIN = 0.0          # radians RMS of turning function; set from --novelty
 AVOID = None           # (M,SHAPE_K) descriptors of shapes to steer away from
+TARGET = None          # (M,SHAPE_K) descriptors of shapes to HOLD ON TO (--target)
+TARGET_D = 0.0         # allowed distance from the nearest target shape (--targetdist)
 
 
 def _quality(m):
@@ -412,6 +424,49 @@ def score_character(m, maxw, maxh):
     q = _quality(m)
     s = q + np.where(m['plen'] < MIN_LEN, m['plen'] - 1000.0,
                      np.where(gate < len(terms) - 0.001, 100.0 * gate, ch))
+    bad = ~m['ok'] | (m['w'] > maxw) | (m['h'] > maxh)
+    return np.where(bad, BAD, s)
+
+
+def score_match(m, maxw, maxh):
+    """Approximate path synthesis: pull the mechanism's curve onto a DRAWN
+    target shape. tdist is the whole objective — ta is deliberately absent
+    (that is the follow-up stage's job, via score_ta with the achieved shape
+    held). Constraints priced exactly as in score_ta, so a match that stalls
+    the indicator or parks a mount on the path never wins.
+
+    The length term is load-bearing: the turning descriptor is scale-free, so
+    without it the climb converges on 20-inch midgets that wiggle like the
+    target but are useless as a scale (seen on the first pilot, 2026-08-03).
+    3 points per inch under MIN_LEN vs 50 per radian of shape: one radian of
+    fidelity is worth ~17 inches of length.
+    """
+    stall = np.nan_to_num(m['stall'], nan=0.0)
+    s = (-50.0 * m['tdist']
+         + 3.0 * np.clip(m['plen'] - MIN_LEN, -MIN_LEN, 0.0)
+         + 30.0 * np.clip(m['clear'] - 2.5, -2.5, 0.0)
+         + 300.0 * np.clip(stall - STALL_MIN, -0.15, 0.0)
+         + 3000.0 * np.clip(stall - STALL_GATE, -0.07, 0.0))
+    bad = ~m['ok'] | (m['w'] > maxw) | (m['h'] > maxh)
+    return np.where(bad, BAD, s)
+
+
+def score_ta(m, maxw, maxh):
+    """Climb the transmission angle while the target-shape penalty holds the curve.
+
+    The SEARCH-PLAN step-1 experiment: seeded AT a design that already has the
+    shape, this walks uphill in ta and pays 150/rad for any shape drift beyond
+    TARGET_D. The frontier comes from sweeping TARGET_D, not from tuning weights.
+    Stall below STALL_GATE and a mount inside 2.5" are priced steeply — both are
+    non-negotiable in the plan — but not made infeasible, so the climb keeps a
+    gradient back out.
+    """
+    stall = np.nan_to_num(m['stall'], nan=0.0)
+    s = (m['ta']
+         + 30.0 * np.clip(m['clear'] - 2.5, -2.5, 0.0)
+         + 300.0 * np.clip(stall - STALL_MIN, -0.15, 0.0)
+         + 3000.0 * np.clip(stall - STALL_GATE, -0.07, 0.0)
+         - 150.0 * np.maximum(m['tdist'] - TARGET_D, 0.0))
     bad = ~m['ok'] | (m['w'] > maxw) | (m['h'] > maxh)
     return np.where(bad, BAD, s)
 
@@ -503,21 +558,63 @@ def from_dict(d):
     return g
 
 
-DENSE = 1301          # finalists are re-measured this finely; analyze_geometry.py's N
+DENSE = 2601          # finalists are re-measured this finely — the resolution where
+                      # the shape descriptor is converged (was 1301, analyze_geometry
+                      # .py's N, whose shape numbers wobbled ~0.2 rad on hooked curves)
 
 
-def load_avoid(path):
-    """(M,SHAPE_K) turning-function descriptors from a file of designs.
-
-    Read at SHAPE_N, the same decimation measure() uses, or the reference profiles
-    would not be comparable to the candidates'.
-    """
+def load_geos(path):
+    """(M,18) geometries from a designs.json, a picked.json, or a plain list."""
     d = json.load(open(path))
     items = d if isinstance(d, list) else sum((d.get(k, []) for k in
                                                ('longest', 'creative')), [])
-    G = np.array([from_dict(it['geo'] if 'geo' in it else it) for it in items])
-    Qx, Qy, _ = trace(G, drive_lengths(SHAPE_N))
-    return turning_desc(Qx, Qy)
+    return np.array([from_dict(it['geo'] if 'geo' in it else it) for it in items])
+
+
+SHAPE_TRACE = 2601     # reference descriptors come from a CONVERGED trace: the
+                       # coarse grids cut corners in the fast regions and carry
+                       # 0.3-0.6 rad of shape bias (measured 2026-08-03, serpentine
+                       # 0.45 at 261 samples). 2601 agrees with 20001 to 0.00.
+
+
+def load_shapes(path):
+    """(M,SHAPE_K) turning-function descriptors from a file of designs.
+
+    Traced densely, then decimated to the same ~SHAPE_N stations measure() uses,
+    endpoint included, so reference and candidate describe shape the same way.
+    """
+    Qx, Qy, _ = trace(load_geos(path), drive_lengths(SHAPE_TRACE))
+    ix = np.linspace(0, SHAPE_TRACE - 1, SHAPE_N + 1).round().astype(int)
+    return turning_desc(Qx[:, ix], Qy[:, ix])
+
+
+def polyline_desc(P):
+    """Descriptor of a DRAWN curve — an (N,2) point array that never came from a
+    linkage. Arc-resampled to ~SHAPE_N stations, endpoints kept.
+
+    One honest caveat, measured 2026-08-03: a traced design's descriptor reads
+    its vertices uniformly in STROKE (dense where the mechanism dawdles, sparse
+    where it sweeps), while a drawn curve can only be resampled uniformly in
+    ARC. The two spacings cut corners differently, worth ~0.5 rad on the
+    serpentine — same size as the documented coarse-grid bias, far below the
+    3-7 rad thresholds any decision here uses, but do not expect a design fed
+    back through this function to read as distance zero from itself."""
+    P = np.asarray(P, float)
+    seg = np.hypot(*np.diff(P, axis=0).T)
+    P = P[np.concatenate([[True], seg > 1e-12])]         # collapse duplicate points
+    cum = np.concatenate([[0.0], np.cumsum(np.hypot(*np.diff(P, axis=0).T))])
+    tgt = np.linspace(0.0, cum[-1], SHAPE_N + 1)
+    return turning_desc(np.interp(tgt, cum, P[:, 0])[None, :],
+                        np.interp(tgt, cum, P[:, 1])[None, :])[0]
+
+
+def load_polyline_shapes(path):
+    """(M,SHAPE_K) descriptors from a JSON of drawn polylines: either
+    [{'pts': [[x,y],...]}, ...] (tools/propose_shapes.py output) or a plain
+    list of point lists."""
+    d = json.load(open(path))
+    return np.array([polyline_desc(it['pts'] if isinstance(it, dict) else it)
+                     for it in d])
 
 
 def finalize(g, maxw, maxh, tamin=0.0):
@@ -589,7 +686,7 @@ def merge(paths, out, keep_long, keep_creative, maxw, maxh):
 
 def report(out):
     hdr = (f'{"":4}{"len":>7} {"loops":>5} {"rev":>4} {"wig":>5} {"both":>5} '
-           f'{"dens":>5}  envelope  clear  stall  {"trans":>5} {"novel":>6}  gen')
+           f'{"dens":>5}  envelope  clear  stall  {"trans":>5} {"novel":>6} {"tgt":>5}  gen')
     for tag in ('baseline', 'longest', 'creative'):
         if tag not in out:
             continue
@@ -599,12 +696,12 @@ def report(out):
             print(f'  {i+1:>2}.{m["plen"]:7.1f} {m["cross"]:5.0f} {m["rev"]:4.0f} {m["wig"]:5.2f}'
                   f' {min(m["pos"], m["neg"]):5.2f} {m["dens"]:5.2f}  {m["w"]:4.1f}x{m["h"]:<4.1f}'
                   f' {m["clear"]:5.2f}  {m["stall"]:5.3f}  {m["ta"]:5.1f} '
-                  f'{min(m.get("nov", 0), 99):6.2f}  '
+                  f'{min(m.get("nov", 0), 99):6.2f} {m.get("tdist", 0):5.2f}  '
                   f'{"y" if m["generic_ok"] else "n"}')
 
 
 def main():
-    global TA_MIN, G_BOTH, G_REV, G_WIG, MIN_LEN, NOV_MIN, AVOID
+    global TA_MIN, G_BOTH, G_REV, G_WIG, MIN_LEN, NOV_MIN, AVOID, TARGET, TARGET_D
     ap = argparse.ArgumentParser()
     ap.add_argument('--merge', nargs='+', help='pool several run outputs and re-select')
     ap.add_argument('--emit', type=int, default=0, help='candidates per set (0 = 5 and 10)')
@@ -629,6 +726,40 @@ def main():
     ap.add_argument('--avoid', help='JSON list of designs whose SHAPE to steer away '
                                     'from (a picked.json, or any file of {geo:...} '
                                     'entries). Without it novelty is not scored.')
+    ap.add_argument('--seedfrom', help='JSON of designs to seed the climb from '
+                                       '(jittered copies) instead of random sampling. '
+                                       'With --target this becomes the SEARCH-PLAN '
+                                       'step-1 experiment: climb ta, hold the shape.')
+    ap.add_argument('--target', help='JSON of designs whose SHAPE to hold on to — '
+                                     'the mirror of --avoid: distance ABOVE '
+                                     '--targetdist is penalised instead of below.')
+    ap.add_argument('--targetdist', type=float, default=0.0,
+                    help='allowed RMS turning-function distance from the nearest '
+                         '--target shape. ~3 is recognisably the same design, ~5 the '
+                         'same family (the two clean families sit 6.3 apart). Run '
+                         'with --nsamp 1041: the default 261 grid carries ~0.5 rad '
+                         'of corner-cutting shape bias.')
+    ap.add_argument('--widebox', action='store_true',
+                    help='widen the binding box edges (cv2 +-32, cu2 0-34, L5 8-32) '
+                         '- SEARCH-PLAN step 3. Results are not comparable to runs '
+                         'in the original box; the envelope cap still applies.')
+    ap.add_argument('--targetpts', help='JSON of DRAWN polylines to hold/match '
+                                        '(tools/propose_shapes.py output) - the '
+                                        'shapes never came from a linkage.')
+    ap.add_argument('--targetix', type=int, default=-1,
+                    help='use only this row (0-based) of --target/--targetpts. One '
+                         'run should chase one shape; min-over-shapes slides to '
+                         'whichever is easiest.')
+    ap.add_argument('--objective', choices=['auto', 'match', 'ta', 'character'],
+                    default='auto',
+                    help='seeded-climb objective. match = minimise shape distance '
+                         'to the target (approximate path synthesis); ta = climb '
+                         'transmission angle holding the shape within --targetdist; '
+                         'auto = ta when a target is set, else character.')
+    ap.add_argument('--emitpool', type=int, default=0,
+                    help='sample only: write this many feasible random geometries '
+                         'as a plain JSON list (a reusable --seedfrom pool) and '
+                         'exit before any climb.')
     ap.add_argument('--novelty', type=float, default=0.0,
                     help='how far, in radians RMS of turning function, a design must '
                          'sit from every shape in --avoid. Within one family the '
@@ -648,10 +779,28 @@ def main():
     MIN_LEN = a.minlen
     NOV_MIN = a.novelty
     G_BOTH, G_REV, G_WIG = a.character
+    if a.widebox:
+        for n, lo, hi in (('cv2', -32.0, 32.0), ('cu2', 0.0, 34.0), ('L5', 8.0, 32.0)):
+            i = NAMES.index(n)
+            LO[i], HI[i] = lo, hi
+        SPAN[:] = np.where(HI - LO > 0, HI - LO, 1.0)
+        print('box widened: cv2 +-32, cu2 0-34, L5 8-32', flush=True)
     if a.avoid:
-        AVOID = load_avoid(a.avoid)
+        AVOID = load_shapes(a.avoid)
         print(f'avoiding the shapes of {len(AVOID)} designs, novelty gate '
               f'{NOV_MIN:.2f} rad', flush=True)
+    if a.target:
+        TARGET = load_shapes(a.target)
+        TARGET_D = a.targetdist
+        print(f'holding the shape of {len(TARGET)} design(s) within '
+              f'{TARGET_D:.2f} rad', flush=True)
+    if a.targetpts:
+        TARGET = load_polyline_shapes(a.targetpts)
+        TARGET_D = a.targetdist
+        print(f'matching {len(TARGET)} drawn shape(s)', flush=True)
+    if TARGET is not None and a.targetix >= 0:
+        TARGET = TARGET[a.targetix:a.targetix + 1]
+        print(f'  target row {a.targetix} only', flush=True)
 
     if a.merge:
         merge(a.merge, a.out, nA, nB, a.maxw, a.maxh)
@@ -659,6 +808,67 @@ def main():
 
     L = drive_lengths(a.nsamp)
     rng = np.random.default_rng(a.seed)
+
+    if a.seedfrom:
+        G0 = load_geos(a.seedfrom)
+        obj = a.objective
+        if obj == 'auto':
+            obj = 'ta' if TARGET is not None else 'character'
+        fn = {'ta': score_ta, 'match': score_match, 'character': score_character}[obj]
+        scorer = lambda m: fn(m, a.maxw, a.maxh)
+        if obj == 'match' and TARGET is not None and len(G0) > a.seeds // 5:
+            # start the climb in the right basin: keep the fifth of the pool
+            # already nearest the target shape, jittered to fill the seed count
+            m0 = measure(G0, drive_lengths(261))
+            order = np.argsort(m0['tdist'] + 1e6 * ~m0['ok'])
+            G0 = G0[order[:max(1, a.seeds // 5)]]
+        reps = -(-a.seeds // len(G0))
+        base = np.repeat(G0, reps, 0)[:a.seeds]
+        seeds = base + rng.normal(0, 0.02, base.shape) * SPAN
+        seeds[:len(G0)] = G0                    # keep the unjittered originals
+        seeds = np.clip(seeds, LO, HI)
+        seeds[:, SIGN_IX] = base[:, SIGN_IX]    # clip zeroes the sign columns
+        print(f'climbing from {len(G0)} seed design(s) x {len(seeds)} jitters, '
+              f'{obj} objective...', flush=True)
+        B, s = climb(seeds, L, scorer, rng, a.iters)
+        ix = pick_distinct(B, np.argsort(-s), nB, 0.30)
+        out = {'meta': {'actuator': 'joyce QS11940, aClamp 23.23, ext 0-16',
+                        'driven_len': [float(L[0]), float(L[-1])],
+                        'envelope_cap': [a.maxw, a.maxh],
+                        'seedfrom': a.seedfrom, 'target': a.target,
+                        'targetdist': a.targetdist, 'widebox': bool(a.widebox)},
+               'baseline': {'geo': SERPENTINE,
+                            'metrics': finalize(from_dict(SERPENTINE), 1e9, 1e9)},
+               'creative': []}
+        for i in ix:
+            r = finalize(B[i], a.maxw, a.maxh, 0.0)
+            if r is None:
+                print('  dropped a finalist: fails at dense sampling', flush=True)
+                continue
+            out['creative'].append({'geo': to_dict(B[i]), 'metrics': r})
+        with open(a.out, 'w') as f:
+            json.dump(out, f, indent=1)
+        report(out)
+        if obj == 'match':
+            best = min((d['metrics'] for d in out['creative']),
+                       key=lambda m: m['tdist'], default=None)
+            if best:
+                print(f'\nbest match: tdist {best["tdist"]:.2f} rad '
+                      f'(~3 same design, ~5 same family) at ta {best["ta"]:.1f} deg')
+            else:
+                print('\nno finalist survived dense re-measure')
+        else:
+            held = [d['metrics'] for d in out['creative']
+                    if d['metrics']['tdist'] <= a.targetdist + 0.25]
+            best = max(held, key=lambda m: m['ta'], default=None)
+            if best:
+                print(f'\nfrontier point: targetdist {a.targetdist:.1f} -> '
+                      f'ta {best["ta"]:.1f} deg at tdist {best["tdist"]:.2f}')
+            else:
+                print(f'\nfrontier point: targetdist {a.targetdist:.1f} -> '
+                      f'no finalist held the shape')
+        print(f'wrote {a.out}')
+        return
     print(f'driven length {L[0]:.2f}" .. {L[-1]:.2f}"   envelope cap '
           f'{a.maxw:.0f}x{a.maxh:.0f}"   {a.trials:,} trials', flush=True)
 
@@ -690,6 +900,15 @@ def main():
         print('no feasible candidates'); return
     G = np.concatenate(pool); pl = np.concatenate(keys)
     print(f'\nseed pool {len(G)}   raw best {pl.max():.1f}"', flush=True)
+
+    if a.emitpool:
+        # a reusable --seedfrom pool: a random slice, not the longest - the match
+        # objective re-ranks per target, diversity is worth more than length here
+        ix = rng.permutation(len(G))[:a.emitpool]
+        with open(a.out, 'w') as f:
+            json.dump([to_dict(g) for g in G[ix]], f)
+        print(f'wrote {a.out}: {len(ix)} feasible seeds from {done:,} trials')
+        return
 
     order = np.argsort(-pl)
     seedsA = G[order[:a.seeds]]
@@ -797,6 +1016,61 @@ def _selfcheck():
     M = shape_dist(P, P)
     assert np.abs(M - M.T).max() < 1e-9, f'shape_dist asymmetric by {np.abs(M-M.T).max()}'
     assert np.abs(np.diag(M)).max() < 1e-9, 'a shape must be distance 0 from itself'
+
+    # target holding (--target). A design measured against its own shape must read
+    # tdist 0 end to end through measure(), and score_ta's penalty must bite only
+    # ABOVE the allowance, at 150 per radian.
+    global TARGET, TARGET_D
+    g = from_dict(SERPENTINE)[None, :]
+    Qx, Qy, okS = trace(g, drive_lengths(SHAPE_TRACE))
+    assert okS[0], 'serpentine must assemble over the joyce stroke'
+    ixs = np.linspace(0, SHAPE_TRACE - 1, SHAPE_N + 1).round().astype(int)
+    TARGET, TARGET_D = turning_desc(Qx[:, ixs], Qy[:, ixs]), 2.0
+    td = measure(g, drive_lengths(SHAPE_TRACE))['tdist'][0]
+    assert td < 1e-9, f'own shape must be tdist 0, got {td}'
+    # DENSE must sit at the converged descriptor — the old ::k stride decimation
+    # dropped the endpoint and read a hooked curve 5 rad from itself
+    tdd = measure(g, drive_lengths(DENSE))['tdist'][0]
+    td5 = measure(g, drive_lengths(5201))['tdist'][0]
+    assert abs(tdd - td5) < 0.1, f'DENSE not converged: {tdd} vs 5201 {td5}'
+    # the coarse search grid is NOT converged (documented bias, not a bug): keep a
+    # canary so nobody equates a 261-sample shape number with a dense one
+    tdc = measure(g, drive_lengths(261))['tdist'][0]
+    assert tdc < 0.7, f'coarse-grid bias grew: {tdc}'
+    fake = dict(ta=np.full(2, 10.0), clear=np.full(2, 5.0), stall=np.full(2, 0.2),
+                tdist=np.array([1.5, 3.0]), ok=np.full(2, True),
+                w=np.full(2, 40.0), h=np.full(2, 40.0))
+    sa, sb = score_ta(fake, 48, 48)
+    assert abs(sa - sb - 150.0) < 1e-9, (sa, sb)
+
+    # drawn-polyline targets (--targetpts). A design's own trace fed back as raw
+    # points reads as itself up to the stroke-vs-arc parametrization bias (~0.5,
+    # see polyline_desc); arc-resampling must not care how the input points were
+    # spaced; and score_match must price 1 rad at exactly 50 - with the stall
+    # floor still outranking half a radian of shape.
+    Pts = np.stack([Qx[0], Qy[0]], 1)                    # serpentine at SHAPE_TRACE
+    dP = polyline_desc(Pts)
+    dS = turning_desc(Qx[:, ixs], Qy[:, ixs])[0]
+    rt = shape_dist(dP[None, :], dS[None, :])[0, 0]
+    assert rt < 0.6, f'round-trip beyond the documented bias: {rt}'
+    assert shape_dist(polyline_desc(Pts[::2])[None, :], dP[None, :])[0, 0] < 0.05
+    t = np.linspace(0, 1, 800) ** 2 * math.pi            # half circle, points bunched
+    Pn = np.stack([7 * np.cos(t), 7 * np.sin(t)], 1)
+    tu = np.linspace(0, math.pi, 800)
+    Pu = np.stack([7 * np.cos(tu), 7 * np.sin(tu)], 1)
+    assert shape_dist(polyline_desc(Pn)[None, :], polyline_desc(Pu)[None, :])[0, 0] < 0.05
+    fm = dict(clear=np.full(2, 5.0), stall=np.full(2, 0.2), ok=np.full(2, True),
+              w=np.full(2, 40.0), h=np.full(2, 40.0), tdist=np.array([2.0, 1.0]),
+              plen=np.full(2, 100.0))
+    ma, mb = score_match(fm, 48, 48)
+    assert abs(mb - ma - 50.0) < 1e-9, (ma, mb)
+    fm2 = dict(fm, tdist=np.array([1.0, 0.5]), stall=np.array([0.2, 0.0]))
+    m2a, m2b = score_match(fm2, 48, 48)
+    assert m2a > m2b, 'stall floor must outrank half a radian of shape'
+    fm3 = dict(fm, tdist=np.array([1.0, 0.0]), plen=np.array([100.0, 20.0]))
+    m3a, m3b = score_match(fm3, 48, 48)
+    assert m3a > m3b, 'a perfect-shape midget must lose to a full-size near-match'
+    TARGET, TARGET_D = None, 0.0
     print('selfcheck ok')
 
 

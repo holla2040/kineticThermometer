@@ -109,8 +109,8 @@ Grand Arc: rA=20.8 dA=31.7 anch=166.7° gx=-3.8 gy=-0.1 L2=11.9 L3=11.8
 L4=12.6 cu=19.6 cv=-5.2 s1=-1 ox=7.7 oy=-7.6 L5=8.5 L6=13.5 cu2=19.3
 cv2=-12.0 s2=-1  → ~66″ of scale.
 
-**Gallery presets.** Two families, both Joyce (`actT:1`), both found by
-`tools/explore_designs.py`, neither offered as a build candidate:
+**Gallery presets.** Three families, all Joyce (`actT:1`), all found by
+`tools/explore_designs.py`, none offered as a build candidate:
 
 - `example-00`…`example-10` (2026-08-03) — the length search. All eleven ride
   dead center, 0.06°–5.9° minimum transmission angle, marked `*` in the menu.
@@ -122,10 +122,32 @@ cv2=-12.0 s2=-1  → ~66″ of scale.
   clear `--novelty 7.0` against all ten of the first run plus serpentine and
   Grand Arc. At least 7.3 from every earlier shape and at least 11.0 from each
   other, where the two original families sit 6.3 apart at their closest.
+- `shape-01`, `shape-02` (2026-08-03) — SEARCH-PLAN step 1's answer: seeded
+  `score_ta` climbs FROM example-08 / example-00 (`--seedfrom --target
+  --targetdist 2`), climbing transmission angle while a shape penalty held the
+  curve. 13.1° / 16.7° at shape distance 2.0 from their seeds — the owner kept
+  these two of twelve candidates and rejected the rest as lookalikes (see
+  REPORT.md for the frontier: the shape survives to ~33° at family distance,
+  never to 40°). Labels are page-measured at 0–15.5″: 88″ / 138″.
+- `shape-03`…`shape-06` (2026-08-03, later the same day) — the REVERSE
+  pipeline: abstract curves drawn first (`tools/propose_shapes.py`, novelty
+  ≥7 vs everything shipped), owner picked five; `--targetpts --objective
+  match` found each drawing's closest mechanism curve, then ta-lift ladders
+  walked each match toward safety. The owner picked these four off the tagged
+  verdict sheet (tiles #4, #7, #11, #14) at their stated 6° criterion:
+  7.5° / 6.9° / 14.0° / 25.3°, labels 71″/43″/35″/36″ page-measured at
+  0–15.5″. Two things this settled, recorded in REPORT.md: a drawn wild shape
+  is always MATCHED at dead center and buying safety costs shape drift at a
+  measured rate; and two of the five picked drawings (prop-11's double
+  spiral, prop-08's grand ribbon) are beyond this mechanism outright.
+  **The family is COMPLETE at six** (owner, 2026-08-03) — don't extend it.
+  NOT clean — none reaches 40°; `verify_export.py` §13 pins each preset's
+  angle to its label value ±0.5° inside [6°, 40°).
 
-All eight: 40.0°–50.1°, scale 55″–111″, mount clearance 2.89″–10.37″ (all clear
-the 2.5″ rule the serpentine misses). Numbering is deliberately non-contiguous —
-the names are the ones the owner picked by, so don't renumber them.
+The six clean: 40.0°–50.1°, scale 55″–111″, mount clearance 2.89″–10.37″ (all
+clear the 2.5″ rule the serpentine misses; the six shape-* clear it too at
+2.6″–9.4″). Numbering is deliberately non-contiguous — the names are the ones
+the owner picked by, so don't renumber them.
 
 **A wrong finding, recorded so it is not re-derived:** the first run's output made
 it look like loops and cusps simply ARE the singularity and vanish above 40°.

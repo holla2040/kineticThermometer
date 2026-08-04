@@ -1001,7 +1001,7 @@ with sync_playwright() as p:
         return Math.min(d,180-d); };
       const sel = document.getElementById('preset'), out = {};
       for (const o of sel.options) {
-        if (!/^(clean|example)-/.test(o.value)) continue;
+        if (!/^(clean|example|shape)-/.test(o.value)) continue;
         sel.value = o.value; sel.dispatchEvent(new Event('change', {bubbles:true}));
         let t = 1e9, ok = true;
         for (let i = 0; i <= 400; i++) {
@@ -1014,6 +1014,7 @@ with sync_playwright() as p:
       return out; }""")
     clean = {k: v for k, v in fam.items() if k.startswith("clean-")}
     exam = {k: v for k, v in fam.items() if k.startswith("example-")}
+    shape = {k: v for k, v in fam.items() if k.startswith("shape-")}
     assert clean and len(exam) == 11, f"{len(clean)} clean, {len(exam)} example"
     for k, v in fam.items():
         assert v["ok"], f"{k} does not assemble across the shipped range"
@@ -1021,9 +1022,21 @@ with sync_playwright() as p:
     assert not bad, f"clean presets must stay at or above 40 deg: {bad}"
     notbad = {k: v["t"] for k, v in exam.items() if v["t"] >= 6.0}
     assert not notbad, f"example presets are the dead-center exhibit: {notbad}"
+    # shape-*: curves the owner picked, walked as far from dead center as each
+    # shape allows (2026-08-03). No band — each preset's angle is pinned to the
+    # value its menu label and the README quote, so silent drift fails here.
+    # All are >= 6 (no * marker) and < 40 (none may be called clean).
+    SHAPE_TA = {"shape-01": 13.1, "shape-02": 16.7, "shape-03": 7.5,
+                "shape-04": 6.9, "shape-05": 14.0, "shape-06": 25.3}
+    assert set(shape) == set(SHAPE_TA), sorted(shape)
+    off = {k: v["t"] for k, v in shape.items()
+           if abs(v["t"] - SHAPE_TA[k]) > 0.5 or not (6.0 <= v["t"] < 40.0)}
+    assert not off, f"shape preset angles drifted from their pinned values: {off}"
     lo = min(v["t"] for v in clean.values()); hi = max(v["t"] for v in clean.values())
+    slo = min(v["t"] for v in shape.values()); shi = max(v["t"] for v in shape.values())
     print(f"gallery: {len(clean)} clean presets {lo:.1f}-{hi:.1f} deg from dead center, "
-          f"11 example presets all inside 6 deg")
+          f"11 example presets all inside 6 deg, "
+          f"{len(shape)} shape presets {slo:.1f}-{shi:.1f} deg")
     assert not errs, errs
 
     pg.screenshot(path=os.path.join(OUT,"panel.png"))
