@@ -128,7 +128,18 @@ cv2=-12.0 s2=-1  → ~66″ of scale.
   curve. 13.1° / 16.7° at shape distance 2.0 from their seeds — the owner kept
   these two of twelve candidates and rejected the rest as lookalikes (see
   REPORT.md for the frontier: the shape survives to ~33° at family distance,
-  never to 40°). Labels are page-measured at 0–15.5″: 88″ / 138″.
+  never to 40°). Labels are page-measured at 0–15.5″: 82″ / 138″.
+  **shape-01 was respaced on 2026-08-09** and no longer matches the numbers the
+  search produced. As found, B and R sat |rA−L2| = **0.1286″** apart on the crank
+  arm — at full size with 3/8″ pivots their holes MERGE (centres closer than one
+  hole diameter), so the crank could not be made at any scale short of ~9 ft.
+  rA/L2 went 11.2952/11.4238 → **11.1125/11.8625**, opening the gap to exactly
+  **0.750″** = one pin diameter of steel between the holes. Chosen by search to
+  minimise curve change: 2.9″ max, 1.7″ mean, on a 34″ envelope. Side effects,
+  all recorded in the label and verify_export §13: transmission angle 13.1° →
+  **15.7°** (safer, not worse) and scale 88″ → 82″. Nothing downstream of the
+  crank moved. The B/R spacing is a RATIO, so it is not a print-resolution
+  problem — check |rA−L2| ≥ 2× the pivot diameter on any new design.
 - `shape-03`…`shape-06` (2026-08-03, later the same day) — the REVERSE
   pipeline: abstract curves drawn first (`tools/propose_shapes.py`, novelty
   ≥7 vs everything shipped), owner picked five; `--targetpts --objective

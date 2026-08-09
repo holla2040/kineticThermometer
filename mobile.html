@@ -218,7 +218,7 @@
       <option value="clean-11">clean-11 — 81&Prime; scale · 40° min</option>
       <option value="clean-12">clean-12 — 68&Prime; scale · 49° min</option>
       <option value="clean-13">clean-13 — 61&Prime; scale · 40° min</option>
-      <option value="shape-01">shape-01 — 88&Prime; scale · 13° min</option>
+      <option value="shape-01">shape-01 — 82&Prime; scale · 16° min</option>
       <option value="shape-02">shape-02 — 138&Prime; scale · 16° min</option>
       <option value="shape-03">shape-03 — 71&Prime; scale · 7° min</option>
       <option value="shape-04">shape-04 — 43&Prime; scale · 6° min</option>
@@ -518,7 +518,12 @@
     // seeding explore_designs.py's score_ta climb AT example-08 / example-00 and
     // climbing transmission angle while a shape penalty held the curve (2026-08-03).
     // 13 and 16 deg vs the seeds' 0.8 - not clean (>=40), but 16-20x the margin.
-    'shape-01':{rA:11.2952, dA:28.5104, anch:-59.0253, gx:4.9348, gy:7.7081, L2:11.4238, L3:10.0, L4:9.7545, cu:10.9784, cv:13.0359, s1:-1, ox:-6.0835, oy:-8.0094, L5:12.8876, L6:14.3242, cu2:0.0137, cv2:19.5429, s2:-1,
+    // rA/L2 respaced 2026-08-09: as found, B and R sat |rA-L2| = 0.1286" apart on
+    // the crank arm, so at full size their pivot holes MERGE (0.13" centres, 3/8"
+    // pins). Opened to exactly 0.750" = one pin diameter of steel between the two
+    // holes. Chosen by search to minimise curve change: 2.9" max / 1.7" mean on a
+    // 34" envelope. Everything downstream of the crank is untouched.
+    'shape-01':{rA:11.1125, dA:28.5104, anch:-59.0253, gx:4.9348, gy:7.7081, L2:11.8625, L3:10.0, L4:9.7545, cu:10.9784, cv:13.0359, s1:-1, ox:-6.0835, oy:-8.0094, L5:12.8876, L6:14.3242, cu2:0.0137, cv2:19.5429, s2:-1,
                 actT:1, aLmin:24, aStroke:18, aClamp:23.23},
     'shape-02':{rA:13.5512, dA:26.7081, anch:15.7745, gx:-2.2782, gy:18.5459, L2:15.4599, L3:10.7507, L4:11.2192, cu:10.3265, cv:16.285, s1:-1, ox:6.0776, oy:17.2535, L5:8.0512, L6:12.4681, cu2:16.8503, cv2:19.9969, s2:-1,
                 actT:1, aLmin:24, aStroke:18, aClamp:23.23},
