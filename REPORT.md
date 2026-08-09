@@ -320,3 +320,137 @@ install, `pose()` was reimplemented in pure Python from CLAUDE.md's description
 and **validated against all 18 published checkpoint values to 0.6 µm** before
 use. Verification throughout was by driving the live Fusion document and reading
 occurrence transforms back, the same pattern as the page's headless tests.
+
+# Full-scale sculpture in Fusion, and the export pipeline (2026-08-09, later)
+
+The owner asked for the round trip: pick a design in the web tool, hand it over,
+get it built in Fusion. shape-01 was the example. What that exposed, in order.
+
+## The pipeline: `export_trace.py` -> `benchmodel.py`
+
+`print3d.py` accepts a `dump.json` (geo+cfg) already, so the page's `__ct.dump()`
+is the natural handover. It is not sufficient on its own:
+
+- **`print3d.py` builds the wrong mechanism for a joyce design.** `solve()` hard-codes
+  `L = GEN_LMIN + linspace(0, GEN_EXTMAX)` — the generic 24..39.5″ drive length —
+  rather than calling `drive_lengths()`. shape-01 is `actT:1` and runs
+  23.351..38.803″. Different drive lengths, different crank angles, different curve.
+  serpentine happens to be generic, which is why this never showed.
+
+`tools/export_trace.py` therefore exports a **trace**: geo, cfg, and the joint
+positions the PAGE computed at 141 poses, plus `lenOf`/`stroke`. Downstream
+transcribes instead of re-deriving, which is the project's rule everywhere else,
+and is right for both actuator types by construction.
+
+`tools/benchmodel.py` consumes a trace and re-implements print3d's level search,
+fastener policy and hardware verification **with no dependencies at all** — every
+collision test in print3d is between capsules and discs, so shapely's polygon ops
+reduce to exact segment-distance algebra. It runs in 0.06 s against print3d's
+shapely, and **reproduces `print/fusion-data.json` value-for-value** for
+serpentine (all 15 keys, every nested number, the 141-pose search, the level
+assignment, the screw table, the checkpoints). That regression is the reason to
+trust it on designs print3d has never seen.
+
+Two generalisations it adds, both forced by shape-01:
+
+- **The flush-pocket policy is derived, not asserted.** print3d asserts
+  `plate1 < crank < bar` and refuses otherwise. The direction is derivable: the
+  crank pocket opens away from the mating part, and the shuttle rides the face of
+  the bar away from the crank. serpentine still comes out byte-identical.
+- **`--cad-only`** separates two verdicts that print3d conflates: whether a CAD
+  assembly is collision-free (posts, sleeves, puck, ring) and whether the physical
+  build is (those plus every nut and head stub). A design can pass one and fail
+  the other, and shape-01 does exactly that.
+
+## What the gallery actually supports at bench scale
+
+All 25 presets through the pipeline. Only **4 build**: serpentine, example-10,
+clean-13, shape-06. **4 more need the mirrored fastener policy**: clean-07,
+clean-11, shape-01, shape-05. **17 have no collision-free stacking at all**, killed
+overwhelmingly by *post-crosses-link* — a fixed post standing through a higher
+link's swept area. The bench design was tuned around serpentine, which is unusually
+compact; the gallery presets sweep near the bed limit.
+
+Separately, **7 of 25 have B/R pivot holes that merge** — see the shape-01 note in
+CLAUDE.md. At full size with 3/8″ pivots that drops to 3, but shape-01 is one of them.
+
+## The Joyce rod end is metric, and it dictates the crank
+
+Measured off the owner's model (the imperial figures in FABRICATION.md are
+conversions): pin **Ø12.000**, tang eye **Ø34.000**, tang thickness **14.000**,
+tang width **26.000**, rod **Ø35.000**, pin 51.000 ahead of the tube front,
+tang→rod step **27.000**. All mm, all exact. Only the tube is imperial (50.80 =
+2.000″). Consequences, recorded in CLAUDE.md's actuator block:
+
+- The crank runs on **ONE side of the tang**, not straddling it. Straddling puts
+  B's nut inside the tang's plane, where the Ø34 eye needs ≥25.3 mm of B/R spacing;
+  single-sided moves that hardware out of the plane and 24 mm suffices.
+- The crank arm swings to within **18.2°** of the rod axis, and the 14 mm tang necks
+  down from a Ø35 rod, so a plate tucked just clear of the tang fouls the rod
+  27–120 mm behind the pin. At 75 mm wide the rod overlaps the plate at **every one
+  of 401 poses**, so a local scallop is not an option — the crank is offset clear
+  of the rod instead (mid-plane 21 mm, later 23 mm for margin).
+- Single-sided means the R pin is in **single shear with an offset load**.
+
+## The full-scale assembly
+
+Document **`kineticThermometer`** (1:1, mm) in *solohm*; the 1:5.08 printed model
+was renamed **`kineticThermometer-scaled`**. The actuator is a SAT copy, not a
+linked reference — `Occurrences.addByInsert` throws `InternalValidationError` for
+every combination of arguments in this Fusion build. It is placed by its own two
+pivots: clamp pivot onto ANCH to 0.001 mm, rod pin onto R to 0.13 mm (that residual
+is the page's `aClamp` 23.23″ against the model's true 589.909 mm).
+
+Links 45 mm wide × 3.175 mm. Width was checked and is nearly free: the valid
+stacking is identical at 45, 30 and 20 mm, and width does not affect the rod
+clearance either, because the rod passes within 8.4 mm of the crank's own axis
+where it leaves the tang.
+
+**Z-stack straddles the actuator** — the only arrangement that works, since four of
+the five links sweep across it:
+
+| rocker1 | ACTUATOR | crank | plate1 | rocker2 | plate2 |
+|--:|--:|--:|--:|--:|--:|
+| −23 | 0 | +23 | +43 | +63 | +83 |
+
+Clearances: rocker1 and crank 3.9 mm (pure z), plate1 21.9, rocker2 58.7, plate2 61.9.
+The C column spans 59 mm straight through z = 0 and clears by **120 mm** — C never
+comes within 148 mm of the actuator axis in plane.
+
+- **plate1** is a closed triangle (all three of B, C, P are load paths); **plate2** is
+  a **V at P**, 42% lighter, because Q carries only the indicator and is a pointer.
+- The **indicator ring is integral to plate2's arm** — ID 70 / OD 100, no hub, no
+  spokes, nothing bolted on. The arm ends in an eye you read through.
+- The **scale is its own part**, a 12 × 6 bar on the coupler curve at z 72–78,
+  3.41 mm under plate2's underside. 2047 mm long, 15.7 mm per °F average.
+- The backplate was **deleted** — 968 × 937 × 6 mm was 43.8 kg and a solid wind sail,
+  and the actuator's motor pod and clamp buried themselves in it (26,871 and
+  5,094 mm³). A branching **frame** replaces it: flat, 8 mm, z −58..−50, front face
+  25.4 mm behind rocker1 so it clears every link in z by construction. Total steel
+  fell 48.5 → 15.9 kg.
+
+## Things that cost time, recorded so they don't again
+
+- **The scale can only be supported at 22 of 71 stations.** The first check said none:
+  the scale IS the locus of Q, so plate2's arm sweeps over all of it. The escape is
+  that a support post tops out at z = 72, below plate2's plane, so only the four
+  lower links constrain it. The two clearest stations are 336 mm and 263 mm from any
+  moving part.
+- **plate1's P column pinches the scale** at one spot near 68 °F — 5.7 mm from the
+  centreline, in 2 poses of 141. Any scale behind plate2 is crossed by plate2's own
+  support column somewhere. Left unfixed at the owner's call; a small lateral kink in
+  the bar costs nothing in reading accuracy, since the ring's centre is what reads.
+- **Extruding every profile of a capsule-chain sketch fills the region the curve
+  encloses.** The scale ridge came out 380,000 mm³ against a predicted 147,000 until
+  the one 39,135 mm² island profile was filtered out by area. `print3d.py`'s STL
+  ridge has the same shape of bug at much smaller scale.
+- **`Occurrence.transform` and `transform2` both fail SILENTLY** for occurrences built
+  with baked transforms in a parametric design. Rotating the assembly appeared to
+  work and did nothing; the frame and posts moved and the mechanism did not. It was
+  caught only because the interference check reported three pairs a rigid rotation
+  cannot create. Rebuild at the new coordinates instead of trying to move.
+- **The mounting orientation is `cfg.rot`, and it is not decoration.** The owner's is
+  **170°** for shape-01. The model was first built at rot=0, which put the trunk
+  180° out. Correct by rotating the design +170° about Z; verified by reading screen
+  coordinates off the page at rot=170 and solving from two independent mount pairs,
+  both giving +170.00°. **Ask for `cfg.rot` before deciding which way is up.**
