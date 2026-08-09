@@ -128,18 +128,38 @@ cv2=-12.0 s2=-1  → ~66″ of scale.
   curve. 13.1° / 16.7° at shape distance 2.0 from their seeds — the owner kept
   these two of twelve candidates and rejected the rest as lookalikes (see
   REPORT.md for the frontier: the shape survives to ~33° at family distance,
-  never to 40°). Labels are page-measured at 0–15.5″: 82″ / 138″.
+  never to 40°). Labels are page-measured at 0–15.5″: 81″ / 138″.
   **shape-01 was respaced on 2026-08-09** and no longer matches the numbers the
   search produced. As found, B and R sat |rA−L2| = **0.1286″** apart on the crank
-  arm — at full size with 3/8″ pivots their holes MERGE (centres closer than one
-  hole diameter), so the crank could not be made at any scale short of ~9 ft.
-  rA/L2 went 11.2952/11.4238 → **11.1125/11.8625**, opening the gap to exactly
-  **0.750″** = one pin diameter of steel between the holes. Chosen by search to
-  minimise curve change: 2.9″ max, 1.7″ mean, on a 34″ envelope. Side effects,
-  all recorded in the label and verify_export §13: transmission angle 13.1° →
-  **15.7°** (safer, not worse) and scale 88″ → 82″. Nothing downstream of the
-  crank moved. The B/R spacing is a RATIO, so it is not a print-resolution
-  problem — check |rA−L2| ≥ 2× the pivot diameter on any new design.
+  arm. That spacing is a **RATIO** — 1.1% of the crank radius — so it is not a
+  print-resolution problem and no uniform scaling fixes it: at full size the gap
+  is 3.27 mm, and the two pivot holes merge into one slot.
+  rA/L2 went 11.2952/11.4238 → **11.0550/12.0000**, opening the gap to
+  **0.9450″ = 24.0 mm**. That number is set by METRIC hardware (see the actuator
+  note below), not by the hole geometry: 24 mm clears an M12 hex head at R
+  against an M12 hex nut at B with a plain washer under each. Chosen by search
+  to minimise curve change: 3.7″ max, 2.2″ mean, on a 33″ envelope. Side effects,
+  recorded in the label and verify_export §13: transmission angle 13.1° →
+  **16.5°** (safer, not worse) and scale 88″ → 81″. Nothing downstream of the
+  crank moved. **Check |rA−L2| on any new design** — 7 of the 25 shipped presets
+  fail it at bench scale and 3 still fail at full size.
+
+**The Joyce rod end is metric, and it dictates the crank.** Measured off the
+owner's Fusion model 2026-08-09 (the imperial figures in FABRICATION.md are
+conversions of these): pin **Ø12.000**, tang eye **Ø34.000**, tang thickness
+**14.000**, tang width **26.000**, rod **Ø35.000**, pin 51.000 ahead of the tube
+front, tang→rod step 27.000 — all mm, all exact. Only the tube is imperial
+(50.80 = 2.000″). Consequences for the full-scale build:
+- R takes a **12 mm pin**, so that joint is metric by the part, not by choice.
+- The crank runs on **ONE side of the tang**, not straddling it. Straddling puts
+  B's nut inside the tang's plane, where the Ø34 eye needs ≥25.3 mm of spacing;
+  single-sided moves B's hardware out of that plane entirely and 24 mm suffices.
+- Single-sided means the R pin is in **single shear with an offset load**.
+- The crank arm swings to within **18.8°** of the rod axis, and the tang (14
+  thick) necks down from a Ø35 rod. A plate tucked just clear of the tang
+  (~11–13 mm off centre) therefore FOULS the rod about 27–38 mm behind the pin.
+  Fix by offsetting the crank ≥22 mm off the tang centre-plane, or by scalloping
+  the crank locally — the latter keeps the pin's moment arm small.
 - `shape-03`…`shape-06` (2026-08-03, later the same day) — the REVERSE
   pipeline: abstract curves drawn first (`tools/propose_shapes.py`, novelty
   ≥7 vs everything shipped), owner picked five; `--targetpts --objective

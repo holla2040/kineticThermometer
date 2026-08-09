@@ -1026,9 +1026,9 @@ with sync_playwright() as p:
     # shape allows (2026-08-03). No band — each preset's angle is pinned to the
     # value its menu label and the README quote, so silent drift fails here.
     # All are >= 6 (no * marker) and < 40 (none may be called clean).
-    # shape-01 was 13.1 until 2026-08-09, when rA/L2 were respaced so the B and R
-    # pivot holes stop merging at full size; the angle rose to 15.7 as a side effect.
-    SHAPE_TA = {"shape-01": 15.7, "shape-02": 16.7, "shape-03": 7.5,
+    # shape-01 was 13.1 until 2026-08-09, when rA/L2 were respaced to 24.0mm so the B and R
+    # pivot holes clear M12 hardware at full size; the angle rose to 16.5 as a side effect.
+    SHAPE_TA = {"shape-01": 16.5, "shape-02": 16.7, "shape-03": 7.5,
                 "shape-04": 6.9, "shape-05": 14.0, "shape-06": 25.3}
     assert set(shape) == set(SHAPE_TA), sorted(shape)
     off = {k: v["t"] for k, v in shape.items()
