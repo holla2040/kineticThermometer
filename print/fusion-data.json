@@ -1,0 +1,331 @@
+{
+ "units": "mm",
+ "scale_mm_per_inch": 5.0,
+ "levels": {
+  "crank": 2,
+  "plate1": 1,
+  "rocker1": 0,
+  "plate2": 5,
+  "rocker2": 4,
+  "bar": 3
+ },
+ "level_z_link_bottom": {
+  "0": 10.0,
+  "1": 22.0,
+  "2": 34.0,
+  "3": 46.0,
+  "4": 58.0,
+  "5": 70.0
+ },
+ "mounts_model_mm": {
+  "O2": [
+   0.0,
+   -0.0
+  ],
+  "O4": [
+   64.5,
+   30.0
+  ],
+  "O6": [
+   34.518,
+   87.095
+  ],
+  "ANCH": [
+   -94.511,
+   100.823
+  ]
+ },
+ "part_local_holes": {
+  "crank": {
+   "O2": [
+    0,
+    0
+   ],
+   "B": [
+    56.851,
+    0
+   ],
+   "R": [
+    63.075,
+    0
+   ]
+  },
+  "plate1": {
+   "B": [
+    0,
+    0
+   ],
+   "C": [
+    38.852,
+    0
+   ],
+   "P": [
+    17.5,
+    -56.5
+   ]
+  },
+  "rocker1": {
+   "O4": [
+    0,
+    0
+   ],
+   "C": [
+    35.071,
+    0
+   ]
+  },
+  "plate2": {
+   "P": [
+    0,
+    0
+   ],
+   "D": [
+    29.5,
+    0
+   ],
+   "Q": [
+    99.995,
+    -65.745
+   ]
+  },
+  "rocker2": {
+   "O6": [
+    0,
+    0
+   ],
+   "D": [
+    70.0,
+    0
+   ]
+  },
+  "bar": {
+   "ANCH": [
+    0,
+    0
+   ],
+   "slot_center_from": [
+    120.0,
+    0
+   ],
+   "slot_center_to": [
+    197.5,
+    0
+   ]
+  }
+ },
+ "bar": {
+  "width": 12.0,
+  "thick": 4.0,
+  "outline_capsule_axis_len": 197.6,
+  "physical_len": 209.6,
+  "slot_width": 5.4
+ },
+ "screws": [
+  {
+   "joint": "O2",
+   "stack": "crank + post 30 + plate, nut under plate",
+   "grip_mm": 38.0,
+   "screw": "M3x45",
+   "washers_mm": 1.5
+  },
+  {
+   "joint": "O4",
+   "stack": "rocker1 + post 6 + plate, nut under plate",
+   "grip_mm": 14.0,
+   "screw": "M3x20",
+   "washers_mm": 0.5
+  },
+  {
+   "joint": "O6",
+   "stack": "rocker2 + post 54 + plate, nut under plate",
+   "grip_mm": 62.0,
+   "screw": "M3x70",
+   "washers_mm": 2.5
+  },
+  {
+   "joint": "ANCH",
+   "stack": "bar + post 42 + plate, nut under plate",
+   "grip_mm": 50.0,
+   "screw": "M3x60",
+   "washers_mm": 4.5
+  },
+  {
+   "joint": "B",
+   "stack": "flush head in crank + sleeve 8 + plate1, nut+washers below",
+   "grip_mm": 14.0,
+   "screw": "M3x20",
+   "washers_mm": 2.5
+  },
+  {
+   "joint": "C",
+   "stack": "plate1 + sleeve 8 + rocker1",
+   "grip_mm": 16.0,
+   "screw": "M3x20",
+   "washers_mm": 0.5
+  },
+  {
+   "joint": "P",
+   "stack": "plate1 + sleeve 44 + plate2",
+   "grip_mm": 52.0,
+   "screw": "M3x60",
+   "washers_mm": 4.5
+  },
+  {
+   "joint": "D",
+   "stack": "plate2 + sleeve 8 + rocker2",
+   "grip_mm": 16.0,
+   "screw": "M3x20",
+   "washers_mm": 0.5
+  },
+  {
+   "joint": "R",
+   "stack": "flush head in crank + sleeve 8 + shuttle, nut in puck recess",
+   "grip_mm": 15.9,
+   "screw": "M3x20",
+   "washers_mm": 0
+  },
+  {
+   "joint": "Q",
+   "stack": "ring + plate2, nut+washers below",
+   "grip_mm": 6.5,
+   "screw": "M3x10",
+   "washers_mm": 0.0
+  }
+ ],
+ "posts_mm": [
+  6.0,
+  30.0,
+  42.0,
+  54.0
+ ],
+ "sleeves_mm": [
+  8.0,
+  44.0
+ ],
+ "post_by_ground": {
+  "O2": 30.0,
+  "O4": 6.0,
+  "O6": 54.0,
+  "ANCH": 42.0
+ },
+ "sleeve_by_joint": {
+  "B": 8.0,
+  "C": 8.0,
+  "P": 44.0,
+  "D": 8.0,
+  "R": 8.0
+ },
+ "consts": {
+  "LINK_T": 4.0,
+  "AIR": 8.0,
+  "PITCH": 12.0,
+  "PLATE_T": 4.0,
+  "BASE_GAP": 6.0,
+  "LINK_W": 8.0,
+  "M3": 3.4,
+  "POST_OD": 8.0,
+  "SLEEVE_OD": 6.5,
+  "BAR_W": 12.0,
+  "BAR_T": 4.0,
+  "BOSS_OD": 5.0,
+  "SLOT_W": 5.4,
+  "PUCK_OD": 16.0,
+  "PUCK_T": 6.0,
+  "HEXR": 4.5,
+  "NUT_AF": 5.5,
+  "RING_IN": 8.0,
+  "RING_OUT": 10.0,
+  "RING_T": 2.5,
+  "FOOT_D": 10.0,
+  "FOOT_H": 6.0,
+  "POCKET": 6.5,
+  "CLEAR": 1.5,
+  "MARGIN": 6.0
+ },
+ "plate_bounds_model_mm": [
+  -104.511,
+  -24.148,
+  81.928,
+  139.587
+ ],
+ "pose_checkpoints": {
+  "ext0": {
+   "R": [
+    18.446,
+    60.318
+   ],
+   "B": [
+    16.626,
+    54.365
+   ],
+   "C": [
+    54.37,
+    63.576
+   ],
+   "P": [
+    47.022,
+    3.625
+   ],
+   "D": [
+    21.446,
+    18.326
+   ],
+   "Q": [
+    -6.909,
+    110.456
+   ]
+  },
+  "mid": {
+   "R": [
+    50.934,
+    37.205
+   ],
+   "B": [
+    45.907,
+    33.533
+   ],
+   "C": [
+    68.996,
+    64.782
+   ],
+   "P": [
+    101.749,
+    14.033
+   ],
+   "D": [
+    79.689,
+    33.62
+   ],
+   "Q": [
+    70.625,
+    129.587
+   ]
+  },
+  "ext15.5": {
+   "R": [
+    58.111,
+    -24.527
+   ],
+   "B": [
+    52.376,
+    -22.107
+   ],
+   "C": [
+    34.248,
+    12.257
+   ],
+   "P": [
+    94.184,
+    19.734
+   ],
+   "D": [
+    65.006,
+    24.083
+   ],
+   "Q": [
+    4.972,
+    99.501
+   ]
+  }
+ }
+}
