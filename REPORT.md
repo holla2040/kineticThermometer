@@ -167,3 +167,156 @@ All four verifiers green; §13 pins each shape preset's angle to its label
 value. The shape family is complete at six per the owner. Lesson applied
 going forward: designs are presented ONLY with explicit numbered tiles and
 buildable/not tags at the owner's stated criterion.
+
+# Benchtop 3D-print model + native Fusion rebuild (branch `3dfab-level`, 2026-08-09)
+
+Two pieces of work, in order: a generator that turns the flat serpentine into a
+printable 3D model, and a hand transcription of that model into Fusion 360 as
+jointed components so the thing actually articulates on screen.
+
+## 1. The print pipeline (`tools/print3d.py`, `print/`) — commit ec9ee4e
+
+The flat mechanism is lifted into 3D: a back plate carries posts of differing
+lengths at the four fixed mounts, every moving link rides its own plane parallel
+to the plate, and sleeves couple the joints across planes. The actuator is
+replaced by a hand drive — a bar pivoting on the anchor post with a slot along
+its axis, and a shuttle puck that rides the slot and pins to the crank's R hole.
+That reproduces the actuator constraint exactly: R stays on the anchor line the
+way `lenOf()` puts it, and **the slot ends ARE the stops at ext 0 and 15.5″**, so
+the model cannot be pushed past the dA+rA ceiling.
+
+Scale **5 mm per real inch** (1:5.1), chosen by `pick_scale` as the largest tidy
+0.1 step that fits plate + margin on a 210 mm bed. Back plate 186 × 164 mm, bar
+210 mm — everything prints flat, no supports.
+
+**The level assignment is searched, not chosen.** `assign_levels` enumerates
+every stacking of the six links and rejects any that collides at any of the 141
+poses (same sampling as the page's `rangeValid`), where "collides" covers link
+vs link, post shaft crossing a link's plane, sleeve crossing a link's plane, and
+sleeve/post passing through the air band a puck or ring stub occupies. Survivors
+are ranked by fewest levels, then least post+sleeve metal. The winner:
+
+| level | 0 | 1 | 2 | 3 | 4 | 5 |
+|---|---|---|---|---|---|---|
+| part | rocker1 | plate1 | crank | bar | rocker2 | plate2 |
+
+Pitch 12 mm (4 link + 8 air). `verify_hardware` then clears what the level
+search does not: post shafts, sleeves, the puck, the ring and every nut/head
+protrusion, checked pairwise per pose wherever two share an air band.
+
+Four results here are load-bearing and must not be "improved":
+
+- **The plates are hollow triangles**, not filled hulls. A filled plate2 sweeps
+  over the O2 post at some pose and then *no* collision-free stacking exists at
+  all. Hollow rings sweep far less and print just as flat.
+- **The bar tip is trimmed** to `lmax + 0.1`. A longer tip collided with the P
+  sleeve (7.1 mm centre distance against 10.75 needed). The outline's own end cap
+  forms the stop wall.
+- **B and R take flush heads in pockets** in the laminated crank, B from above
+  and R from below. They sit only |rA−L2| = 6.2 mm apart on the crank arm, so a
+  head beside the neighbouring joint's sleeve does not fit. `screw_table`
+  asserts the orientation policy (`plate1 < crank < bar`) that makes this valid.
+- **Level order**, as above.
+
+Outputs: 16 STLs plus `assembly.stl` (everything placed at mid-stroke),
+`PRINT.md` (BOM, screw/washer table, assembly order) and `fusion-data.json`
+(exact mm coordinates, level table, post/sleeve lengths, pose checkpoints).
+`PROMPT.md` is the handover written so the Fusion rebuild could happen on
+another machine.
+
+## 2. Native Fusion 360 assembly (2026-08-09)
+
+Design **`kineticThermometer-bench-3dfab`** in project *solohm*, units mm, built
+through the Fusion MCP link by transcribing `print/fusion-data.json`. Nothing
+was re-derived; the owner's existing designs were not touched.
+
+**15 components, 18 occurrences** — back plate (with feet, mount holes and the
+raised scale ridge), the five links, bar, shuttle, ring, four posts, and sleeves
+(8 mm ×4, 44 mm ×1). All flat extrusions on XY. Every hole landed within
+**0.0016 mm** of its published mid-stroke world position; the residual is the
+3-decimal rounding in the JSON, nothing else.
+
+**20 as-built joints** (as-built, so creating them moved nothing): back plate
+grounded; 10 rigid — four posts to the plate, five sleeves to the link they
+stand on, ring to plate2 at Q; nine revolutes at O2, O4, O6, ANCH, B, C, P, D, R;
+and one pin-slot, shuttle to bar, sliding on the bar's own X axis with limits at
+the slot ends (−38.7498 / +38.7502 mm about mid = 120 … 197.5 from ANCH).
+
+### Verification (all three asked for, all pass)
+
+1. **Articulation stop to stop** — smooth, no popped joints, stops at both slot
+   ends.
+2. **Checkpoints** — R, B, C, P, D and Q at ext0 / mid / ext15.5 against
+   `pose_checkpoints`: **worst error 0.0019 mm** (tolerance was 0.1). Q reads
+   (−6.908, 110.455), (70.625, 129.587), (4.971, 99.500).
+3. **Interference** at all three poses, coincident faces ignored: **zero pairs**
+   — re-run after the scale ridge was added, still zero.
+
+### Findings worth not re-deriving
+
+- **A slider joint shuttle↔bar silently locks Fusion's solver; a pin-slot does
+  not.** The joint is created without error and then joint values simply refuse
+  to stick. Bisected by suppression: both four-bar loops drive correctly on
+  their own, and the freeze appears only when the slider is added on top of the
+  revolute at R. `PROMPT.md` predicted this and named pin-slot as the robust
+  choice; it is not optional, it is the only one that works.
+- **Consequence: the assembly has 2 DOF, not 1.** A pin-slot leaves the shuttle
+  free to spin about its own screw — which a round boss on a round screw
+  genuinely is. Only one DOF moves the mechanism. Making shuttle↔crank *rigid*
+  instead would give exactly 1 and is kinematically identical; it was not done
+  because `PROMPT.md` specifies a revolute there.
+- **Drive in small steps or the second loop flips branch.** One large jump sends
+  plate2/rocker2 to the other assembly solution (both are valid: |D−O6| = 70.000
+  and |D−P| = 29.500 either way) and it does not come back on its own. Stepping
+  at 0.4 mm tracks perfectly across the whole stroke. Dragging in the UI is
+  continuous so a human will not hit this, but any script that drives this model
+  must step. `Design.snapshots.revertPendingSnapshot()` restores the as-built
+  pose; there is no `revert()`.
+- **The scale ridge is a union of 140 capsules, not a sweep or loft.** The Q path
+  self-crosses once, so a swept 1.2 × 1.2 profile fails there. Drawing the 140
+  capsules into one sketch yields 417 profiles (0.2 s) which extrude and join to
+  the plate in 6.6 s — the same construction `plate_mesh` uses, and it matches.
+- **Fusion API notes** that cost time: `ExtrudeFeatureInput.participantBodies`
+  wants a Python list, not an `ObjectCollection`; the root component's name
+  cannot be set (it follows the document); a Join whose profile touches nothing
+  makes a second body regardless of the operation, so order joins so each one
+  touches (the ring had to be built hub → spokes → band); an annulus profile is
+  the one with `profileLoops.count == 2`.
+
+### Two measurements the model surfaced
+
+- **`print3d.py`'s `GEO` is not the serpentine written up in CLAUDE.md.** Its
+  2026-08-08 `__ct.dump()` traces **82.4″ of scale** over ext 0–15.5; CLAUDE.md's
+  recorded serpentine numbers trace exactly **58.0″**, matching that document.
+  Both were computed with the same solver. So the printed model — and now the
+  Fusion model — is of a later tuning than the preset section describes. Nothing
+  was changed; flagging it because the two documents currently disagree.
+- **Parts swing off the plate edge over part of the stroke.** The plate is sized
+  from the Q path + mounts + margin only, so nothing bounds where the other
+  joints go. Joint centre plus link half-width, past the plate edge, over all
+  141 poses:
+
+  | joint | edge | past by | at ext |
+  |---|---|--:|--:|
+  | P | x+ | 31.27 mm | 9.30″ |
+  | R | y− | 4.38 mm | 15.50″ |
+  | D | x+ | 2.28 mm | 8.19″ |
+  | B | y− | 1.96 mm | 15.50″ |
+
+  The P overhang carries the 44 mm sleeve, so that column is cantilevered in
+  mid-air for a stretch of the stroke. Not a collision and not a transcription
+  error — it is what the generator produces — but it is the one thing a viewer
+  will notice, and widening `plate_2d` to bound the joint traces (as
+  `buildBBox` already does on the page) would fix it. **Unresolved; owner's
+  call.** By contrast the ring's outer edge exactly reaches the plate's top edge
+  at mid-stroke (0.000 mm), which is `MARGIN + POST_OD/2 = RING_OUT` by
+  construction.
+
+### Method note
+
+`numpy`/`shapely`/`trimesh` are not installed on this machine, so the 141-point
+Q path needed for the ridge could not come from `print3d.py`. Rather than
+install, `pose()` was reimplemented in pure Python from CLAUDE.md's description
+and **validated against all 18 published checkpoint values to 0.6 µm** before
+use. Verification throughout was by driving the live Fusion document and reading
+occurrence transforms back, the same pattern as the page's headless tests.
