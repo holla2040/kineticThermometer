@@ -454,3 +454,96 @@ comes within 148 mm of the actuator axis in plane.
   180° out. Correct by rotating the design +170° about Z; verified by reading screen
   coordinates off the page at rot=170 and solving from two independent mount pairs,
   both giving +170.00°. **Ask for `cfg.rot` before deciding which way is up.**
+
+# Making the full-scale assembly articulate (2026-08-09, late)
+
+`kineticThermometer` now has **29 joints and drives**: push the actuator and the
+whole mechanism follows, with the rod staying in its tube. Verified numerically —
+`|R−ANCH|` matches `√((aClamp+e)² + off²)` to **0.0001 mm** across the entire
+393.7 mm stroke, and the indicator Q lands on its expected point to **0.230 mm
+median / 1.116 mm worst** over all 141 sample extensions.
+
+## The actuator is a LINKED reference now, not a copy
+
+The earlier SAT import was the root of a whole afternoon of wasted work. SAT is a
+dumb solid format: it flattened the owner's three components into five loose bodies
+in one component and **discarded the joints entirely**. Everything after that was
+rebuilding, badly, something the source already had.
+
+`Occurrences.addByInsert` had thrown `InternalValidationError` for every argument
+combination, which is why the copy existed at all. **A Fusion update on 2026-08-09
+fixed it** — on build 2705.0.87 both `isReferencedComponent=True` and `False`
+succeed. Re-test it rather than assuming; the workaround is far worse than the
+feature.
+
+The owner's `Joyce QS11940 Linear Actuator` already contained `Slider 2` — rod↔tube,
+Z axis, limits spanning exactly 406.4 mm = 16.0000″, the true stroke. Two things
+were added to it (now **v11**): components renamed `Component1`→`tube`,
+`Component2`→`rod`, and a **`clamp_slide`** slider so the clamp travels the tube over
+`aClamp` 3.48″–24.66″, matching the drag handle the web tool exposes.
+
+## aClamp is a design parameter and the insert must drive it
+
+The clamp position is not fixed — the browser lets the user slide it, and `geo`
+carries it (`aClamp`, 23.23″ for shape-01). `export_trace.py` already exported it;
+what was missing was using it. The insert now:
+
+1. computes the clamp pivot's local position for the exported `aClamp`
+   (`z = 51 − aClamp_mm`, lateral offset 60.404),
+2. builds the placement matrix from THAT, so clamp pivot → ANCH and rod pin → R,
+3. drives `clamp_slide` to match, then **captures a position snapshot**,
+4. only then creates the joints.
+
+Skipping step 3 left a **0.133 mm** residual — exactly `aClamp` 23.23″ against the
+model's as-drawn 23.2247″ — which had been visible for hours as an unexplained
+rod-pin error and dismissed as rounding. It was not rounding.
+
+## The clamp lock: host-side, and order-dependent
+
+The clamp must be free in the source but fixed once installed. Locking it in the
+source is wrong — it destroys the adjustability the part actually has.
+
+The working recipe, and it is fussy:
+
+- suppress `clamp_slide` **in the host assembly context** (`createForAssemblyContext`
+  → `isSuppressed = True`), then create a host rigid joint `lock_clamp_to_tube`
+  between the linked children — **both in the SAME script run**.
+- The host-context suppression **does not survive between script runs**; read back in
+  a later call it reports `False`. But the rigid joint, once created that way,
+  persists through save and reload with `isSuppressed = False`.
+- Attempting the two steps in separate runs always fails: the create is rejected as
+  "a joint in system exists", and un-suppressing the lock while `clamp_slide` is live
+  gets it auto-suppressed again on the next rebuild.
+
+## A diagnosis worth remembering
+
+With the clamp unlocked, driving the actuator produced `|R−ANCH|` **exactly** constant
+at 593.126 mm. That was read as "the solver refuses, the loop is over-constrained".
+It was the opposite: the loop was UNDER-constrained and `clamp_slide` was absorbing
+the entire input — the rod extended by *e* relative to the tube while the tube slid
+back through the clamp by the same *e*, so R never moved. **A perfectly constant
+output under a varying input means absorption, not refusal.** The owner spotted this
+from watching the model; three API-side hypotheses had missed it.
+
+## Fusion API notes that cost real time
+
+- **`JointDirections` resolve against the JOINT GEOMETRY's frame**, not the
+  component's. Handing a slider the clamp's pin hole made it slide along the pin
+  axis. Pick geometry whose normal IS the wanted direction — a circle edge on the
+  tube gives the tube axis.
+- **`CustomJointDirection` is ignored by `AsBuiltJointInput`.** Native construction
+  axis, assembly-context proxy, cylindrical face and straight BRepEdge were all
+  silently discarded (`customSlideDirectionEntity` reads `None`), falling back to
+  world X for pin-slot and −Z for slider.
+- **Driving a joint creates a pending position that later joint creation REVERTS**,
+  undoing any placement done after it. `Design.snapshots.add()` captures it first.
+- **`Document.save()` can return `True` and do nothing.** Verify by re-reading
+  `dataFile.versionNumber` — and note `app.data.findFileById()` can return a stale
+  cached DataFile, so `document.dataFile` is the more reliable read.
+- **One file can be open twice with divergent in-memory contents**, one view showing
+  the edits and the other the original. That state blocks saving. Close both and
+  reopen a single clean view.
+- **A reference update resets host-side overrides.** After
+  `FusionDocument.updateAllReferences()` the sub-assembly joint came back
+  unsuppressed and at its as-drawn position; the lock and the `aClamp` setting both
+  had to be re-applied.
