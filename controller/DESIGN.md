@@ -34,6 +34,7 @@ the original thread, fold it in here.
 - [Hardware](#hardware)
   - [MCU](#mcu---decided-2026-08-20)
     - [Production board: ESP32-S3-WROOM module](#production-board-esp32-s3-wroom-module-on-the-controller-pcb---decided-2026-08-20)
+      - [PCB reference: a WROOM board drawn end to end in KiCad](#pcb-reference-a-wroom-board-drawn-end-to-end-in-kicad--2026-08-21)
   - [Motor drivers (need 2)](#motor-drivers-need-2---decided-2026-08-20-ti-drv8245-q1)
   - [Temperature sensor](#temperature-sensor---decided-2026-08-20)
   - [Power supply](#power-supply---open)
@@ -119,6 +120,62 @@ Sources (checked 2026-08-20):
 - JLC assembly listing (N16R8 example): <https://jlcpcb.com/partdetail/3198300-ESP32_S3_WROOM_1N16R8/C2913202>
 - Module datasheet: <https://www.espressif.com/sites/default/files/documentation/esp32-s3-wroom-1_wroom-1u_datasheet_en.pdf>
 - Espressif hardware design guidelines (schematic/layout/antenna keep-out): <https://docs.espressif.com/projects/esp-hardware-design-guidelines/en/latest/esp32s3/>
+
+#### PCB reference: a WROOM board drawn end to end in KiCad — 2026-08-21
+
+Video reference for drawing this board: *"ESP32-S3 Simple TestBoard designed in
+KiCad"*, **made by morten**, 2:29:31, uploaded 2026-08-21 —
+<https://www.youtube.com/watch?v=Z5AQMZh3qXw>. An unbroken real-time build of an
+ESP32-S3-WROOM-1 board: blank schematic → symbols → footprints → BOM →
+45 × 45 mm 4-layer stackup → routing → copper zones → silkscreen → DRC →
+Gerbers → fab upload. Machine-transcribed here 2026-08-21 (Whisper
+`large-v3-turbo`); digested notes with a timestamp index in
+[`docs/video-kicad-esp32s3-morten.md`](docs/video-kicad-esp32s3-morten.md), full
+transcript in
+[`docs/video-kicad-esp32s3-morten-transcript.md`](docs/video-kicad-esp32s3-morten-transcript.md).
+His board is orderable at
+<https://www.pcbway.com/project/shareproject/ESP32_S3_SIMPLE_TestBoard_b77edcef.html>.
+
+The findings that touch decisions in this document:
+
+- **PSRAM costs three GPIOs.** On `-R8` (octal-PSRAM) WROOM variants **IO35,
+  IO36 and IO37 are used internally** and are unusable. We chose the N8, so they
+  are ours — but the `1U`/R8 escape hatch above stops being free the moment
+  firmware hard-codes them. Keep IO35–37 unassigned if it costs nothing.
+- **Strapping pins**: GPIO0, GPIO3, GPIO45, GPIO46. We have pins to spare —
+  don't use them. GPIO3 takes a 10 kΩ pull-up; GPIO0 + EN + RX/TX belong to the
+  programming header.
+- **EN/reset network**: button EN→GND, 10 kΩ pull-up, 1 µF EN→GND for the reset
+  RC, **and an ESD diode on EN** because a finger reaches that button. That last
+  part generalises: the walk-up forecast button below is a user-touched GPIO on
+  an outdoor metal sculpture, so **every user-facing GPIO gets an ESD part**.
+- **Decoupling**: 10 µF + 100 nF at the module, with the **100 nF closest to the
+  module VCC pin** in layout.
+- **Qwiic (JST SH 4-pin, SM04B-SRSS-TB) for the I²C sensor** — pin 1 GND, 2 VCC,
+  3 SDA, 4 SCL; pull-ups **2.2 kΩ** (10 k was drawn and corrected); default S3
+  I²C is IO8 SDA / IO9 SCL. 💡 This is the tidy way to put the **TMP117** on a
+  cable, off the board and out of its self-heating — spec at
+  <https://www.sparkfun.com/qwiic>. 🔶 Open: whether the sensor hangs on a Qwiic
+  cable or gets its own sealed gland-and-terminal run, given the outdoor
+  environment (JST SH is an indoor connector).
+- **A 6-pin ESP-Prog programming header** (EN, TXD, RXD, 3V3, GND, IO0) is a
+  complete substitute for on-board USB-UART. We picked the S3 partly *for*
+  native USB, so this is not a replacement — but footprinting the header is
+  cheap insurance if native-USB bring-up stalls.
+- **4-layer stackup that suits us**: top signal / In1 **GND plane** / In2
+  **3V3 plane** / bottom signal. Zone settings used: clearance 0.2 mm, thermal
+  gap 0.2 mm, spoke 0.3 mm.
+- **Workflow**: assign footprints in the *schematic* editor (Tools → Edit Symbol
+  Fields), not the PCB editor, so the PCB can't silently substitute one; the same
+  dialog carries custom BOM columns (distributor part numbers) and the
+  exclude-from-BOM / DNP flags. Annotate before the final BOM export.
+
+**Do not treat it as a template for the whole controller PCB.** It is a
+milliamp signal board: linear LM1117 from 5 V (not our 12 V buck), 0.6 mm
+"power" tracks, no motor drivers, no high-current copper or thermal work, no
+return-path/plane splitting, no impedance control (skipped even on USB), and
+nothing about surge, reverse-polarity or transient protection on field wiring.
+Those are the hard parts of *our* layout and this video does not touch them.
 
 ---
 
