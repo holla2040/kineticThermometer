@@ -21,9 +21,14 @@ WHERE EVERYTHING LIVES (read-only; do not edit the repo, no git operations)
   mid-stroke; use it as a visual cross-check (insert as mesh if helpful).
 
 CONNECT FIRST
-Invoke the fusion-mcp skill (if present) to connect/verify the AutodeskFusionMCP
-add-in before declaring Fusion unreachable — the server is usually fine and only
-the session's registration is stale. Create a NEW design document (suggest name
+Use the `fusion` MCP registration — Autodesk's built-in Fusion MCP Server at
+http://127.0.0.1:27182/mcp (enabled in Fusion Preferences ▸ General ▸ API; its
+fusion_mcp_execute tool runs Python inside Fusion). That is the ONLY Fusion MCP
+server on these machines; anything mentioning "AutodeskFusionMCP" or port 8765
+is stale — it was removed 2026-08-25. Before declaring Fusion unreachable, run
+~/claude-code-fusion-mcp-check/check.sh and follow exactly what it prints;
+if it exits 0 but this session lacks the tools, the session is stale — restart
+it (MCP servers attach at session start). Create a NEW design document (suggest name
 "kineticThermometer-bench-3dfab"), units mm. Never modify the owner's existing
 designs (notably "Joyce QS11940 Linear Actuator").
 
