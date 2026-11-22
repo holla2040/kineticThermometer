@@ -26,6 +26,17 @@ architecture in [CLAUDE.md](CLAUDE.md).
       is only about the measured w×h. Owner call on whether the envelope
       should include the actuator.
 
+## Fixed actuator — open decision
+
+- [ ] **Is the drive going in the mounting post?** The simulator can now do it
+      (`geo.actT = 2`, preset `serp-fixed`, see
+      [FIXED-ACTUATOR.md](FIXED-ACTUATOR.md)) and the engraved curve survives
+      the swap untouched. What is NOT decided: whether the build takes on the
+      guided carriage at the rod tip that a fixed screw actuator needs, and
+      whether the con-rod tilt is kept low enough (a long con-rod) or a real
+      rail carries the side load. Nothing downstream of the crank is affected
+      either way, so this can stay open while the curve is chosen.
+
 ## Fabrication document
 
 - [ ] Pivot hardware: bearing or bushing type, fastener sizes, retention.
@@ -98,7 +109,7 @@ architecture in [CLAUDE.md](CLAUDE.md).
 ## Settled — do not redo
 
 These were tried and deliberately reverted or removed. The reasons are in
-CLAUDE.md; listed here so they do not get "fixed" again.
+docs/ui-decisions.md and docs/mobile-ui.md; listed here so they do not get "fixed" again.
 
 - Sub-ticks at 1° — built, then removed. The path divisions say the same thing.
 - White tick strokes beside the path — removed. The indicator ring covers

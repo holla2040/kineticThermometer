@@ -375,8 +375,8 @@ screen. Full layer reference in [FABRICATION.md](FABRICATION.md).
 ## Two files, one core
 
 `index.html` and `mobile.html` are two hand-maintained pages that share one
-solver, one DXF writer and one set of presets. That shared half — about 1050
-of each file's ~1550 lines — sits between marker comments:
+solver, one DXF writer and one set of presets. That shared half — about 1575
+of each file's ~2200–2300 lines — sits between marker comments:
 
 ```
 // ==== SHARED CORE START ====

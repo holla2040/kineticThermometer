@@ -3,7 +3,7 @@
 ## What this project is
 
 An outdoor kinetic sculpture that displays temperature. A linear actuator
-(driven by a temperature controller, not part of this repo) pushes a bell
+(driven by a temperature controller — designed in `controller/DESIGN.md`) pushes a bell
 crank, which drives a chain of two four-bar linkages. The temperature
 indicator is the **coupler point of the second four-bar** — it rides a
 non-linear, spline-shaped path. The engraved temperature scale on the
@@ -19,8 +19,9 @@ for reference.
 
 ## Hardware constraints (from the owner)
 
-- **Two selectable actuator types** since 2026-08-02 (branch `joyce`), chosen
-  by `geo.actT` and the "Actuator type" select in the Actuator drive section:
+- **Three selectable actuator types** — two since 2026-08-02 (branch `joyce`),
+  the third since 2026-08-23 (branch `feature/fixed-actuator`) — chosen by
+  `geo.actT` and the "Actuator type" select in the Actuator drive section:
   - **0 = generic pin-to-pin**: retracted length `geo.aLmin` + stroke
     `geo.aStroke`, editable fields, defaults **24″+18″ = 42″ extended** (the
     original assumed hardware). Old saves and both presets mean this.
@@ -34,6 +35,18 @@ for reference.
     ("Joyce QS11940 Linear Actuator") via the Fusion MCP link — see
     FABRICATION.md's table and images/joyce-*.png. They are real, not
     placeholders. `JOYCE.side` (pivot ear side) is still a mounting choice.
+  - **2 = fixed in the post** — the actuator clamped RIGID so it can be hidden
+    inside the mounting post. It cannot rock, so a con-rod `geo.aCon` links the
+    rod tip to the crank pin R: a slider-crank. The tip runs along a fixed axis
+    `geo.aDir` (degrees) out of the base pin at `(dA, anch)` — the same mount the
+    other two types use, reinterpreted, exactly as joyce reinterprets it as the
+    clamp pivot — at `geo.aLmin + ext` along it. `geo.aBr` picks the branch, like
+    `s1`/`s2`. Retracted length and stroke are the generic `aLmin`/`aStroke`
+    fields. **The curve is unaffected**: Q is a function of the crank angle
+    alone, so any drive sweeping the same window traces the same engraved scale —
+    what changes is where the °F marks land on it. Full rationale, the
+    feasibility numbers and the fabrication cost (a guided carriage at the rod
+    tip; the screw must not take side load) are in **FIXED-ACTUATOR.md**.
 - The usable slice of stroke is configurable ("excursion min/max" fields,
   inches of extension, capped at the selected actuator's stroke) so the build
   can avoid end-stops.
@@ -70,9 +83,7 @@ for reference.
 
 ## Preset geometries (inches, O2-origin)
 
-Serpentine (CHOSEN): rA=12.8 dA=27.3506 anch=-135.3211° | stage1: gx=12.9
-gy=-6.0 L2=11.4 L3=7.7705 L4=7.0142 cu=3.5 cv=11.3 s1=-1 | stage2: ox=6.30
-oy=-16.71 L5=5.9 L6=14.0 cu2=14.665 cv2=9.6354 s2=-1  → 58″ of scale.
+Serpentine (CHOSEN; `serpentine` in `PRESETS`) → 82.5″ of scale (measured 2026-11-22).
 Excursion 0–15.5″ (not 0–17″ — see the ceiling below).
 
 Owner-tuned by dragging, second round, 2026-07-19. Superseded the first
@@ -83,16 +94,15 @@ typical ambient. This one moves that slow region out to the cold end.
 Measured against the original search constraints — it does NOT satisfy them,
 same as its predecessor. Recorded honestly so nobody re-derives it:
 
-- 10°F steps run 1.02″ (−20..−10) to 10.95″ (100..110): max-segment rule
-  (≤2.2″) and speed-ratio rule (≤7×, actual 10.8×) both exceeded.
-- Slowest 1°F step 0.089″ at −20°F, below the 0.15″ min-segment rule.
-- Not monotonic: the scale expands, then slows at 40–50°F and again at
-  80–90°F, then expands hard. Sharpest kink is a 65° turn at 48°F.
-- **Mount rule (fabrication rule 3) is violated.** O6 clears the curve by
-  only 0.97″ and O2 by 2.41″ (rule: ≥2.5″), and four mount-to-mount lines
-  cross the scale: O2–O4, O2–O6, O4–O6, O4–ACT. The curve now weaves
-  between the mounts instead of staying on one side of them. This is a
+- 10°F steps run 0.79″ (−20..−10) to 16.36″ (100..110): max-segment rule
+  (≤2.2″) and speed-ratio rule (≤7×, actual 20.7×) both exceeded.
+- Slowest 1°F step 0.073″ at −17/−18°F, below the 0.15″ min-segment rule.
+- Not monotonic: the scale expands to 13.7″ per 10°F at 60–70°F, slows to
+  3.0″ at 80–90°F, then expands hard. Sharpest turn is 63° at 85°F.
+- **Mount rule (fabrication rule 3) is violated.** O2 clears the curve by
+  only 2.06″ (rule: ≥2.5″); O4, O6 and ACT clear it. This is a
   build blocker, not an aesthetic call — unresolved as of this writing.
+- Re-measured 2026-11-22 with `tools/analyze_geometry.py` (default 0–15.5″ excursion); re-run it rather than trusting these after any geometry change.
 - **Actuator ceiling (GENERIC type): dA+rA=40.25″**, so the drive triangle
   stops closing past ~15.75″ of extension. That is why extMax is 15.5 and
   not 17. The controller must never command past 15.5″ or the linkage jams
@@ -105,139 +115,44 @@ same as its predecessor. Recorded honestly so nobody re-derives it:
 `tools/analyze_geometry.py <dump.json>` re-runs all of the above against a
 `__ct.dump()` capture.
 
-Grand Arc: rA=20.8 dA=31.7 anch=166.7° gx=-3.8 gy=-0.1 L2=11.9 L3=11.8
-L4=12.6 cu=19.6 cv=-5.2 s1=-1 ox=7.7 oy=-7.6 L5=8.5 L6=13.5 cu2=19.3
-cv2=-12.0 s2=-1  → ~66″ of scale.
+**Serpentine, fixed actuator** (`serp-fixed`) proves the drive swap costs the curve nothing — not a build candidate. Numbers in FIXED-ACTUATOR.md; `verify_export.py` §14 re-measures them.
 
-**Gallery presets.** Three families, all Joyce (`actT:1`), all found by
-`tools/explore_designs.py`, none offered as a build candidate:
+Grand Arc (`grandarc`) is the alternate, 56.0″ of scale (measured 2026-11-22).
 
-- `example-00`…`example-10` (2026-08-03) — the length search. All eleven ride
-  dead center, 0.06°–5.9° minimum transmission angle, marked `*` in the menu.
-- `clean-01`, `clean-03`, `clean-07` (2026-08-04) — the same search under
-  `--tamin 40`. No `*`. The run emitted ten; the owner kept these three and cut
-  the other seven as **variations on two shapes** — `clean-00..04` were one theme
-  and `clean-05..09` another, and 03 and 04 were effectively the same curve.
-- `clean-10`…`clean-14` (2026-08-04, same day) — a second run that also had to
-  clear `--novelty 7.0` against all ten of the first run plus serpentine and
-  Grand Arc. At least 7.3 from every earlier shape and at least 11.0 from each
-  other, where the two original families sit 6.3 apart at their closest.
-- `shape-01`, `shape-02` (2026-08-03) — SEARCH-PLAN step 1's answer: seeded
-  `score_ta` climbs FROM example-08 / example-00 (`--seedfrom --target
-  --targetdist 2`), climbing transmission angle while a shape penalty held the
-  curve. 13.1° / 16.7° at shape distance 2.0 from their seeds — the owner kept
-  these two of twelve candidates and rejected the rest as lookalikes (see
-  REPORT.md for the frontier: the shape survives to ~33° at family distance,
-  never to 40°). Labels are page-measured at 0–15.5″: 81″ / 138″.
-  **shape-01 was respaced on 2026-08-09** and no longer matches the numbers the
-  search produced. As found, B and R sat |rA−L2| = **0.1286″** apart on the crank
-  arm. That spacing is a **RATIO** — 1.1% of the crank radius — so it is not a
-  print-resolution problem and no uniform scaling fixes it: at full size the gap
-  is 3.27 mm, and the two pivot holes merge into one slot.
-  rA/L2 went 11.2952/11.4238 → **11.0550/12.0000**, opening the gap to
-  **0.9450″ = 24.0 mm**. That number is set by METRIC hardware (see the actuator
-  note below), not by the hole geometry: 24 mm clears an M12 hex head at R
-  against an M12 hex nut at B with a plain washer under each. Chosen by search
-  to minimise curve change: 3.7″ max, 2.2″ mean, on a 33″ envelope. Side effects,
-  recorded in the label and verify_export §13: transmission angle 13.1° →
-  **16.5°** (safer, not worse) and scale 88″ → 81″. Nothing downstream of the
-  crank moved. **Check |rA−L2| on any new design** — 7 of the 25 shipped presets
-  fail it at bench scale and 3 still fail at full size.
+**Gallery presets** (`example-*`, `clean-*`, `shape-*`, all Joyce, none a build candidate) and how the design search found them: `tools/CLAUDE.md`. Standing rules: the shape-* family is COMPLETE at six — don't extend it; don't renumber the presets; **check |rA−L2| on any new design** (B and R pivot holes merge below ~24 mm at full size).
 
-**The Joyce rod end is metric, and it dictates the crank.** Measured off the
-owner's Fusion model 2026-08-09 (the imperial figures in FABRICATION.md are
-conversions of these): pin **Ø12.000**, tang eye **Ø34.000**, tang thickness
-**14.000**, tang width **26.000**, rod **Ø35.000**, pin 51.000 ahead of the tube
-front, tang→rod step 27.000 — all mm, all exact. Only the tube is imperial
-(50.80 = 2.000″). Consequences for the full-scale build:
-- R takes a **12 mm pin**, so that joint is metric by the part, not by choice.
-- The crank runs on **ONE side of the tang**, not straddling it. Straddling puts
-  B's nut inside the tang's plane, where the Ø34 eye needs ≥25.3 mm of spacing;
-  single-sided moves B's hardware out of that plane entirely and 24 mm suffices.
-- Single-sided means the R pin is in **single shear with an offset load**.
-- The crank arm swings to within **18.8°** of the rod axis, and the tang (14
-  thick) necks down from a Ø35 rod. A plate tucked just clear of the tang
-  (~11–13 mm off centre) therefore FOULS the rod about 27–38 mm behind the pin.
-  Fix by offsetting the crank ≥22 mm off the tang centre-plane, or by scalloping
-  the crank locally — the latter keeps the pin's moment arm small.
-- `shape-03`…`shape-06` (2026-08-03, later the same day) — the REVERSE
-  pipeline: abstract curves drawn first (`tools/propose_shapes.py`, novelty
-  ≥7 vs everything shipped), owner picked five; `--targetpts --objective
-  match` found each drawing's closest mechanism curve, then ta-lift ladders
-  walked each match toward safety. The owner picked these four off the tagged
-  verdict sheet (tiles #4, #7, #11, #14) at their stated 6° criterion:
-  7.5° / 6.9° / 14.0° / 25.3°, labels 71″/43″/35″/36″ page-measured at
-  0–15.5″. Two things this settled, recorded in REPORT.md: a drawn wild shape
-  is always MATCHED at dead center and buying safety costs shape drift at a
-  measured rate; and two of the five picked drawings (prop-11's double
-  spiral, prop-08's grand ribbon) are beyond this mechanism outright.
-  **The family is COMPLETE at six** (owner, 2026-08-03) — don't extend it.
-  NOT clean — none reaches 40°; `verify_export.py` §13 pins each preset's
-  angle to its label value ±0.5° inside [6°, 40°).
+**The Joyce rod end is metric (Ø12 mm pin) and dictates the crank** — single-sided crank, single-shear R pin; dimensions and the rod-fouling fix in FABRICATION.md / REPORT.md.
 
-The six clean: 40.0°–50.1°, scale 55″–111″, mount clearance 2.89″–10.37″ (all
-clear the 2.5″ rule the serpentine misses; the six shape-* clear it too at
-2.6″–9.4″). Numbering is deliberately non-contiguous — the names are the ones
-the owner picked by, so don't renumber them.
-
-**A wrong finding, recorded so it is not re-derived:** the first run's output made
-it look like loops and cusps simply ARE the singularity and vanish above 40°.
-They do not. That was an artefact of a length-maximising objective, which does not
-go looking in that part of the space. Under a novelty objective the same gate
-returns curves crossing themselves 1–3 times at 40°–53°. Loops cost even movement,
-not safety: the self-crossing designs are the slowest of the kept six at 0.074″ and
-0.092″/°F against clean-01's 0.50″ — but the ranges overlap, since loop-free
-clean-07 also stalls to 0.092″ (the serpentine itself is 0.075).
-
-Still true: 94% of assemblable random geometries clear 10°, but 2.4M random trials
-produced ZERO at 40° with a 70″ scale, so the clean set exists only because the
-hill climb reaches it. Don't retry this with random sampling.
-
-**Shape novelty** (`--avoid FILE --novelty N`) reduces each curve to its turning
-function — turn per unit arc at `SHAPE_K` equal-arc stations — and requires a
-minimum distance from every shape in the avoid file. Two things there are measured,
-not chosen: `SHAPE_K=10` is the coarsest resolution that still reproduces the
-owner's own two-family grouping (by K=12 within-family spread exceeds cross-family,
-because it starts measuring local wiggle), and the descriptor compares INCREMENTS
-because reversing a cumulative turning profile is not an isometry — that version's
-distance was asymmetric. `--selfcheck` asserts symmetry and the invariances.
-
-`tools/search_geometry.py` reproduces the constrained random search.
-`tools/verify_export.py` drives the page headless and checks the named-save
-flow plus both DXF exports (`python3 tools/verify_export.py [outdir]`).
-
-`tools/explore_designs.py` measures the transmission angle at C and D exactly as
-index.html's `transAngle()` does; `crosscheck_port.py` asserts the two agree to
-1e-9 along with the path itself. Gates are `--tamin`, `--minlen` and
-`--character BOTH REV WIG`. **Watch `--batch`**: peak RSS is roughly
-`batch × nsamp × 8 × 25` bytes, so the old 60k default was >3 GB per process and
-eight in parallel OOM'd this machine on 2026-08-04. Default is now 12k.
+Tool usage (search, verify, explore, the `--batch` memory limit) and the shape-novelty metric: `tools/CLAUDE.md`.
 
 ## How the solver works (index.html, ~pose())
 
-1. temp → fraction of scale (optionally reversed via `tdir`) → extension
-   within [extMin, extMax] (`extAt`) → driven length l = `lenOf(ext)`:
-   generic `aLmin+ext` pin-to-pin, joyce `√((aClamp+ext)²+JOYCE.off²)` from
-   the clamp pivot to the rod pin. `strokeOf()` is the selected stroke.
-2. Crank angle th = anch + acos((dA²+rA²−l²)/(2·dA·rA)). The fixed drive
-   pivot (dA, anch about O2) is the rear pin for generic, the CLAMP pivot
-   for joyce — pose() is identical either way. `actGeom(p,t)` adds the
-   joyce tube frame (direction u, clamp foot F, tube front/rear) for the
-   drawing, the hover seg and the tail drag handle; fitView includes the
-   tube's swept body at both stroke extremes so the tail stays on screen.
+Steps 1–2 (temp → extension → driven length → crank angle th) are
+`extAt()` / `lenOf()` / `pose()`; read them there. What the code does not say:
+
+2b. **actT 2 (fixed) solves th differently and that is the whole trick.**
+   `tipOf(ext)` puts the rod tip on the fixed axis; `pose()` then crosses the
+   con-rod circle (aCon about the tip) with the crank circle (rA about O2) —
+   `circInt`, the same function the chain uses, branch `geo.aBr` — and reads
+   th off the intersection. `fixFits()` is the 0.5″-margin gate, the same
+   figure `actFits()` keeps; failing it reports `why:'act'` like the others.
+   `p.tip` is null on the rocking types, which is how the render, fitView,
+   `buildComps` and `pivotPos` all skip the fixed-drive parts.
+   **th is ALL the actuator produces** — step 3 onward is untouched, so the
+   two drives are interchangeable at equal crank windows.
 3. B = L2 at the same angle th — R and B are COLLINEAR on the crank arm by
    design. A two-arm bell crank (`bAng` between the arms) was built and
    REVERTED the same day (2026-08-02): on screen it read as the linkage
    splitting into a second four-bar and broke too easily. Instead, the R
    handle projects the cursor onto the arm's axis and slides ALONG it,
    range 2–30″ (slider and drag clamp both) — past B or in close to O2,
-   but never off the line. Don't rebuild the V.
-   C = circle-circle intersection of (B, L3) and
-   (O4, L4), branch sign s1. P = B + cu·û + cv·perp(û) where û is unit BC.
-4. D = intersection of (P, L5) and (O6, L6), branch s2. Q = P + cu2·v̂ +
-   cv2·perp(v̂) where v̂ is unit PD. Q is the indicator.
-5. If any intersection fails → pose invalid; the range-level warning in the
-   panel distinguishes actuator-triangle failure from chain failure.
+   but never off the line. Don't rebuild the V. (In actT 2 the con-rod
+   absorbs the offset, so dragging R just sets rA, and the collinearity is a
+   MODEL choice there, not a physical one — see FIXED-ACTUATOR.md "What it
+   unlocks". The model still keeps them collinear.)
+   C, P, D and Q follow by circle intersections in `pose()` (branches `s1`,
+   `s2`); Q is the indicator.
+4. If any intersection fails the pose is invalid.
    Deliberate decision: invalid parts simply aren't drawn (owner chose this
    over a failure-visualization overlay — "leave it").
 
@@ -256,7 +171,7 @@ that must never differ is fenced in BOTH files:
 // ==== SHARED CORE END ====        undo, COMPINFO, buildComps, applyDrag
 ```
 
-~1050 of each file's ~1550 lines. **Edit the physics in `index.html`, then
+~1575 of each file's ~2200–2300 lines. **Edit the physics in `index.html`, then
 run `python3 tools/sync_core.py --apply`.** `--check` (the default) fails on
 any drift and is part of verification. Anything page-specific — hit radii,
 gestures, tooltips, the sheet, resize, `__ct` — lives BELOW the END marker
@@ -280,326 +195,18 @@ Three things had to move into the core to make this work, and they matter:
 
 ### What mobile.html does differently
 
-- **No geometry sliders** — all 16 (`L2 L3 L4 gx gy cu cv L5 L6 ox oy cu2
-  cv2 rA dA anch`) are gone; the 10 canvas handles set them. Kept: excursion
-  min/max, both stage flips, rotation, temperature range, display toggles,
-  presets, saves and both DXF exports. `verify_mobile.py` asserts the id-set
-  difference against index.html EXACTLY, so a forgotten control and an
-  over-eager deletion both fail.
-- **Bottom sheet** (`#sheet`, `.peek` 44px / `.open` 72dvh) instead of the
-  left panel; tap or drag the grab pill. The fit is pinned to the COLLAPSED
-  height on purpose — opening must not make the drawing jump. In landscape a
-  media query turns it into a 300px left drawer.
-  Collapsed it shows **only the pill**: `.peek` drops the background, border
-  and shadow, so the 44px strip is still there to be thumbed but nothing is
-  painted over the drawing. The owner asked for this after seeing a 168px
-  peek that carried the readout tiles and the reading slider — the numeric
-  °F now lives behind the pill, and the ring on the path is what you read at
-  a glance. Don't put the tiles back without asking.
-- **`touch-action` sits on the canvas, not on `html,body`.** index.html's
-  body-level `touch-action:none` is exactly what makes a scrolling panel
-  impossible on a phone; the sheet body is `pan-y` with `overscroll-behavior:
-  contain`.
-- **Every range input is `touch-action:pan-y` as well**, and that one rule is
-  load-bearing. A slider spans the full width of the sheet and claims the
-  touch the moment a gesture starts on it, so scrolling the sheet dragged
-  whichever slider the thumb crossed. `pan-y` hands vertical movement back to
-  the scroller and leaves the slider only the horizontal — the one direction
-  that ever meant to move it. It must sit on the input; `#sheetbody`'s own
-  `pan-y` does not reach it. The test asserts the computed value on all three,
-  because touch-action is enforced by the compositor and synthetic pointer
-  events bypass it — the mechanism is what can be checked, and the mechanism
-  is the fix.
-- **Gestures**: a `Map` of live pointers. Two fingers = pinch + two-finger
-  pan, anchored on the midpoint, and it outranks any in-flight drag. Double
-  tap (<320ms, <40px, and only if the release didn't move) recenters.
-  `zoomAt(sx,sy,f)` is shared by pinch and wheel.
-- **Hit radius 30px for a non-mouse pointer**, 20 for a mouse. Note the real
-  constraint: at 1× the whole 40″ piece is ~270px wide, so the joint pins sit
-  **~10px apart** and a fingertip covers several. Nearest-wins picks
-  something sensible, but picking a SPECIFIC joint means pinching in first —
-  at 12× they are ~126px apart. The help text says so and the test asserts it.
-  This is geometry, not a bug to fix.
-- **The drag tooltip carries VALUES, not slider names** — `gx 9.7″  gy −3.4″`,
-  pinned to the top of the canvas because your finger is on the part. It
-  reuses `COMPINFO[id].sliders` as a parameter list through `fmtGeo`. With the
-  sliders gone this is the only place those numbers appear live.
-- **Floating toolbar: ONE ROW across the top** — `?` at the far left (pushed
-  there by `margin-right:auto`), then `▶/⏸ ↶ ⟲ ⌖` at the right. Settled by the
-  owner on 2026-08-01, after a right-hand column and a help button inside the
-  sheet were both tried and rejected. Things that are load-bearing here:
-  - `?` sits apart from the action group on purpose, so reaching for help can
-    never be a mis-tap on Reset. It must stay at the LEFT end.
-  - `↶` and `⟲` are adjacent and read alike at 19px, and one of them wipes
-    everything — so `⟲` is tinted `--warn`. The glyphs alone are not enough.
-  - Undo belongs next to Reset precisely *because* Reset is the destructive
-    one. It was briefly moved out of the toolbar and the owner asked for it
-    back.
-  - The drag tooltip moved BELOW the row (`top:64px`), since the row now spans
-    the full width and there is no space left at either end. In landscape both
-    the row and the tip start clear of the drawer at 324px.
-  - The play glyph and undo's disabled state are refreshed in a two-line rAF
-    tick — `cfg.demo` and the undo stack are changed from half a dozen places
-    and making each one announce itself would be more code, not less.
-- **A drag does not pause the sweep — it winds it up to 1×**, `DRAGSPEED`
-  (owner's call, 2026-08-01: "users can see the full excursion of their
-  change"; 2× was tried first and read as too fast). `frame()`
-  reads `speedOverride||cfg.speed`, and `cfg.speed` is never written, so the
-  slider keeps the user's value and release just clears the override. Every
-  exit from a drag goes through `endPointer`, which clears it unconditionally
-  — a boost left switched on would be permanent. Consequence worth knowing:
-  the four ground mounts hold still while animating, so dragging those is
-  exactly the intended experience, but R, B, C, P, D and Q ride the mechanism
-  and move under your finger. Pause with ⏸ to pin one down.
-- **A tap does not pause either.** index.html stops the sweep on pointerdown;
-  here the touch radius is 30px over pins ~10px apart, so almost any tap in
-  the middle of the drawing lands on a handle and would silently stop
-  playback. The boost waits for real movement (`dragMoved`), so a stray tap
-  costs nothing — same gate that arms undo.
-- **All typed controls are ≥16px**, or iOS zooms the page on focus. Tap
-  targets ≥44px. `100dvh`, `env(safe-area-inset-*)`, `viewport-fit=cover`.
-- **resize** is rAF-debounced and also bound to `orientationchange` and
-  `visualViewport.resize` — the mobile URL bar fires `resize` continuously.
-- `index.html` redirects a narrow touch screen here (3 lines in `<head>`);
-  **`?desktop=1` escapes it**, and that is the documented way to get the
-  sliders back on a phone.
+The owner's mobile decisions (sheet, toolbar, gestures, hit radii, drag speed) are in `docs/mobile-ui.md`. Read it before editing below mobile.html's END marker; the standing don'ts are under "UI behaviour" below.
 
-## UI features already built (don't regress these)
+## UI behaviour — read before changing either page
 
-- Presets dropdown (serpentine / grandarc / custom), Reset preset.
-- Temperature reading slider + numeric Scale min/max °F fields (≥10° span).
-- Reverse scale checkbox (retract = hot). Excursion min/max fields (≥1″,
-  capped at the selected actuator's stroke — `clampExcursion()` re-clamps on
-  type/stroke edits).
-- **Actuator type select + per-type fields** (both pages, ids shared so the
-  mobile parity test is untouched): `#actT`, generic row `#actGen`
-  (`#aLmin`/`#aStroke`), joyce row `#actJoy` (`#aClamp`). All four are
-  numeric geo keys so presets/saves/undo/applyData carry them for free; a
-  pre-actuator-types save loads as generic 24/18 via an applyData migration.
-  Editing any of them flips the preset to "custom". `syncActUI()` (called
-  from syncSliders) fills fields and toggles row visibility, null-guarded
-  like the slider wiring. The joyce render draws the tube at real scale
-  (Ø2″ tube, Ø1.378″ rod, motor pod, blue clamp glyph at the pivot foot);
-  in joyce mode the 4th DXF mount point is labelled ACT_CLAMP instead of
-  ACT_ANCHOR.
-- Auto-cycle with speed slider **0.05×–1×**; **spacebar toggles** auto-cycle
-  globally (guarded so focused buttons don't re-fire; resumes from current
-  temperature via phase sync — see syncDemoPhase()).
-- Draggable canvas handles: all 4 mounts AND all joint pins (R sets rA,
-  B sets L2, C sets L3+L4, P sets cu/cv, D sets L5+L6, Q sets cu2/cv2).
-  View refit is suppressed during drag; sliders track live; any edit
-  switches preset to "custom". On DESKTOP, grabbing a handle pauses the
-  auto-cycle for the duration of the drag and release resumes it (via
-  syncDemoPhase, so it picks up from the current temperature) — if the
-  sweep was off before the grab it stays off. Mobile is different on
-  purpose: a drag never pauses, it winds the sweep to 1× (DRAGSPEED).
-  Joyce mode adds TWO more handles (both return undefined in generic mode,
-  which is how the pickers skip them), giving three distinct drive drags:
-  - `tail` (tube rear end): slides the TUBE through a fixed clamp — only
-    aClamp changes. Cursor projects onto the tube axis, pins [c0min,c0max].
-  - `clamp` (the clamp body at the foot F): slides the CLAMP along a FIXED
-    tube — aClamp and the pivot mount (dA/anch) change together so the pose
-    at the current temperature does not move at all (tested to 1e-9). The
-    pivot displacement is exactly slide×u along the tube axis.
-  - `anchor` (the pivot pin): unchanged — moves the whole drive mount;
-    aClamp stays put and the actuator re-aims as pose() solves.
-- **Drag feasibility overlay ("Drag regions"), dragging itself unrestricted**
-  (2026-08-03/04, branch `drag-area`, both pages via the shared core).
-  Grabbing a handle — pointerdown, before any movement — tints the NO-GO
-  region faint red under the drawing: every screen cell where dropping the
-  cursor would leave a design that can't assemble somewhere in the range.
-  The untinted holes are where the handle may go. Advisory only:
-  - **A validity gate was built first and REMOVED the next day at the owner's
-    request** ("keeping you within the good region was a mistake"). It pinned
-    drags to range-valid designs with a slide-to-the-wall binary search. The
-    owner wants free-form dragging: into the red and back, with the overlay
-    (and the red box) doing the informing. Don't rebuild the hard block.
-  - The **"Drag regions" checkbox** (Display section, `cfg.region`, default
-    ON, id `region` in both pages) switches the overlay. It rides in
-    CFGDEFAULTS/UNDOCFG/saves like every display toggle.
-  - Mechanics: `applyDrag` = `mutateDrag(name,w)` (pure per-handle mutation;
-    returns touched keys or null when the branch declines — keep the split,
-    the overlay depends on it) + `updGeoUI`. `startDragRegion`/
-    `stepDragRegion` scan a screen grid (~27px cells) in 5ms rAF slices from
-    `frame()`, `mutateDrag` + coarse `rangeValid(24)` per cell, restoring geo
-    after each sample and freezing cfg.temp per slice (mobile's sweep runs
-    during drags). `drawDragRegion` merges each row's bad runs into single
-    rects — per-cell fills doubled alpha at seams and read as a checkerboard.
-  - Computed ONCE per grab: every handle except O2 maps the cursor to
-    geometry absolutely, so its region is drag-invariant. O2 is delta-based
-    and gets no overlay. Cells beyond the slider clamps read GOOD on purpose
-    — the mutation saturates there, so the cursor may go there.
-  - Cleared on release, and on mobile when a second finger outranks the drag.
-    Approximate by design ("close, not exact" — owner's words); the red
-    range warning is the authority.
-  - `rangeValid(n)` (defaults to the same 141 samples as rebuildPath) and
-    `dropNoopUndo` (pops the undo snapshot of a drag that netted zero change,
-    e.g. shoving a handle already pinned at its clamp) live in the core.
-    `__ct` gains `rangeValid` and a `dragRegion` getter on both pages.
-  - Numbers worth knowing (asserted in verify_export §12, mobile §11c): at
-    serpentine defaults O4 has ~0.03″ of valid travel up-right and ~2″
-    down-left (14 good cells of 1296), R can slide in only ~0.6″ before the
-    range fails (dA+rA has ~0.25″ slack), and BOTH joyce tail extremes jam
-    the linkage. The overlay is how a user discovers this; nothing stops
-    them any more.
-- **Undo** (button + Ctrl/Cmd+Z, 60 deep) for wholesale geo changes: drags,
-  preset switches, Reset, loading a saved design. Snapshots geo plus UNDOCFG,
-  which is now **all of `cfg` except `temp` and `demo`** — widened on
-  2026-08-01 when Reset became a full reset, so that one undo puts every
-  setting back. The two exclusions are the point: a drag must not have its
-  playback state restored under it. A drag snapshots once, on first movement,
-  so a grab-and-release pushes nothing. The preset label is re-derived from
-  the restored geometry (presetOf) rather than snapshotted — the dropdown has
-  already moved by the time its change event fires.
-- **Reset (`resetAll`, shared core) = the page as it first opened**: geometry
-  back to the selected preset, every `cfg` value back to `CFGDEFAULTS`, and
-  the view squared up — rotation, zoom AND pan. Both pages use it, so the
-  button means the same thing in both. It used to restore geometry and zero
-  the rotation; it now returns rotation to the 110° default like every other
-  setting, because "reset" means the page as it opened, not "square up the
-  view". Pan and zoom are not undoable, but they never were — transient
-  nudges, not part of the design.
-- **Zoom**: mouse wheel, cursor-anchored — the point under the pointer stays
-  put. Wheel FORWARD zooms IN. `zoom` multiplies the fitted scale via
-  `scale()`; fitView centers using `scale()` too, or a refit would jump the
-  view whenever zoom != 1. Clamped 0.15–12. Not saved, same as pan.
-- **Pan**: right-drag anywhere, or drag empty canvas (so it works on touch).
-  Double-click recenters AND resets zoom. `pan` is added on top of the auto-fit in TX() and
-  subtracted back out in worldOf(), so a refit keeps it and pivot dragging
-  still tracks the cursor. clampPan() keeps it within ±0.6 viewport scaled by
-  zoom, so nothing gets lost. Pan and zoom are the view settings that are NOT
-  saved — they're transient nudges. Rotation IS saved.
-- **Rotate view** slider, `cfg.rot`, 0–360 in 10° steps, **counterclockwise**.
-  Everything on the canvas goes through TX(), so rotating there turns the
-  lot. Four things this had to get right, none of them optional:
-  - Canvas y points DOWN, so the plain rotation matrix reads *clockwise* on
-    screen. `rotRad()` negates the angle in ONE place; rotPt/rotDir/worldOf
-    all go through it. Don't reintroduce a bare `cfg.rot*DEG`.
-  - It rotates about the UNROTATED content center (`view.cx/cy`, set by
-    fitView from the unrotated bounds). Using the rotated center would walk
-    the drawing across the screen as you turn it.
-  - fitView fits the ROTATED bounds, so a turned design still fits the
-    viewport. It computes unrotated bounds first (for the pivot), then
-    rotated bounds (for the fit).
-  - worldOf() inverts the rotation, or a grabbed pivot drifts off the
-    cursor. Verify this MID-drag: releasing refits the view and hides it.
-  Reset restores the DEFAULT rotation (110°), not zero — see resetAll above —
-  and so calls syncUI, not syncSliders.
-  Rotation never alters a real dimension. The bounding box footprint DOES
-  change with it, but that is a different measurement, not the piece changing.
-- Hover: component highlight + tooltip naming the part + its sliders, and
-  the matching slider rows highlight in the panel (COMPINFO / hlSliders).
-- Collapsible <details> sections for Stage 1 / Stage 2 / Actuator drive.
-- **The path and its divisions.** The owner calls the traced curve the
-  **path**. It runs tmin→tmax and its colour goes blue → orange → red
-  (tempColor). It is drawn as one chunk per whole degree (buildChunks,
-  CHUNKSUB=6 sub-samples each, cached in pathChunks by rebuildPath), and a
-  short black **division** is stroked ACROSS the path at every chunk
-  boundary — 10 divisions between labelled marks, every major and minor
-  tick landing exactly on one.
-  History worth not repeating: the divisions used to be an accident. The
-  path was stroked in 140 sample segments, each painting a drop shadow that
-  overpainted the previous segment, and that overpaint showed as the black
-  line. The shadow was offset in +y ONLY, so divisions appeared where the
-  path climbs and vanished entirely where it descends — none at all between
-  60 and 80°F. Both the shadow and that mechanism are gone. Divisions are
-  explicit now; do not reintroduce a drop shadow.
-- **Labels thin where they crowd** (added 2026-07-31, closing a TODO item).
-  A 10° label is drawn only if it clears every label already placed by
-  `LBLGAP=34` SCREEN px — against ALL of them, not just the previous one,
-  because this path folds back and 110° comes to rest beside 60°: the two
-  printed as one blot. Measured in screen px, so **zooming in brings the
-  skipped ones back**; it is a legibility rule, not a change to the scale.
-  6 of 14 survive on a phone at 1×, 9 of 14 on a 1280px desktop, all 14 at
-  12×. **The DXF deliberately does NOT thin** — the engraving is at real
-  size where nothing crowds, and it must carry every 10° mark. That is the
-  one place screen and DXF are allowed to disagree, and the tests assert
-  both halves.
-- **No tick strokes.** tickList() still runs every 5° (major on the 10s,
-  cached in tickCache) but ONLY the 10° labels are drawn, sat 14px off
-  their own division. The white major/minor comb beside the path was
-  removed at the owner's request — it repeated what the divisions already
-  say. 1° sub-ticks were built and removed too. Don't bring either back.
-  The DXF matches: it emits no tick strokes either, only PATH_DIVISIONS and
-  the 10° labels.
-  tickList positions come from pose() directly, NOT from indexing the
-  140-sample path: several ticks land on one sample and the spacing — the
-  whole point of this scale — comes out wrong. tickList also carries the
-  normal's side forward from tick to tick, because a coupler curve can cusp
-  and flip the tangent 180°, which would throw the rest of the comb to the
-  far side of the line. Don't "simplify" either of those away.
-- **The indicator is a transparent ring** (r=9, 2px outline, no fill, no
-  center dot) so the path and its divisions read straight through it — the
-  viewer counts the marks the ring is sitting on. The real sculpture's
-  indicator will be a ring with a hole for exactly this reason. It no
-  longer carries the temperature colour; the path underneath does.
-- **"Inner curves"** (`cfg.ghost`, **default ON** since 2026-08-01 at the
-  owner's request) traces every moving joint (R, B, C, P, D) as dashed
-  paths — R is the actuator rod end.
-- **Bounding box** ("Bounding box" checkbox, `cfg.showBox`, default off): a
-  dashed rectangle round the whole design labelled with its overall size in
-  inches — 40.7″ × 30.8″ square-on for the current serpentine. A sense of the
-  real scale of the piece. Two things to preserve:
-  - buildBBox() runs AFTER fitView() in rebuildPath, because rotPt needs the
-    pivot fitView sets. It still tracks live during a drag: fitView
-    early-returns then, leaving the view frozen, and buildBBox is not gated.
-    Rotating calls `fitView(); bbox=buildBBox();` — the footprint changes.
-  - It samples `pathChunks`, not `pathQ`. pathQ's 140 samples sit ~0.93°F
-    apart and miss the path's extreme at the loop tip near 47°F — three
-    points fell outside the box when it was built from pathQ.
-  It bounds **everything the piece sweeps**: the path, every moving joint's
-  trace (R, B, C, P, D from pathJ), and the four fixed mounts. Ticking the
-  box also ticks "Inner curves", so you can see what it is measuring —
-  otherwise it bounds things that aren't drawn. Named `showBox` in cfg
-  because `bbox` already holds the geometry.
-  The joint traces come from pathJ at 140 samples (~0.93°F apart), which
-  clips a smooth extremum by ~2 thou; the path itself uses the 6× finer
-  pathChunks. Fine for a 40″ piece — don't mistake it for a bug.
-  **Measured in ROTATED space**, so its edges stay square to the screen at any
-  view angle. That means w/h are the footprint AT THE CURRENT ORIENTATION and
-  DO change as you rotate — 40.7″ × 30.8″ square-on, swapping at 90°. That is
-  the point: rotate to the mounting angle and read what it occupies. The
-  transform is split for this — `TXr()` takes an already-rotated point,
-  `TX() = TXr(rotPt())` — and drawBBox uses TXr so it isn't rotated twice.
-- **Nothing auto-restores on load** (the old `couplerThermometer.v2`
-  auto-restore slot was removed — see TODO.md "Settled"); the page opens on
-  the defaults and saved designs are opt-in, with ONE deliberate exception:
-  the **actuator choice** (`geo.actT`) persists under localStorage key
-  `couplerThermometer.actT` (owner request 2026-08-02 — it is hardware you
-  own, not a design edit). Written by `persistActT()` from `rebuildPath()`
-  (compare-and-write, so every path that can flip it — select, preset,
-  undo, Reset, load — is covered), restored at init, guarded try/catch like
-  all storage here. The geometry itself still opens on the preset defaults.
-- **Named designs**: type a name before Save and it also goes into the map
-  under `couplerThermometer.saves`; the name field then clears and the
-  "Load a saved design…" dropdown holds the record. Delete removes the
-  entry named in the field. Recalling from the dropdown deliberately does
-  NOT refill the name field, so deleting a just-recalled design means typing
-  its name. Saving with the name empty still updates the auto-restore slot.
-- **DXF export for Fusion** (two buttons, R12 ASCII, inches, y flipped to
-  CAD convention). `showSaveFilePicker` gives a real Save dialog where the
-  browser has one, else it falls back to an `<a download>`:
-  - *Parts DXF* — the 5 fabricated links, each flat in its own local frame
-    on its own layer (CRANK / PLATE1 / ROCKER1 / PLATE2 / ROCKER2), laid
-    out side by side without overlap. Outline = convex hull of equal-radius
-    circles at each hole (offset edges + corner arcs), so 2-hole links come
-    out as capsules and 3-hole plates as rounded triangles. Driven by the
-    "Pivot hole ⌀" and "Link width" fields (`cfg.hole` / `cfg.lwid`).
-  - *Points DXF* — the assembly frame: the path as line segments
-    (SCALE_CURVE), a division across it every whole degree
-    (PATH_DIVISIONS, `PATHW=1.0″` long), °F labels every 10°, the 4 mounts,
-    and POINT entities at every 10° mark and mount to snap to. No tick
-    strokes — the indicator ring would cover anything beside the path.
-  Curves are line segments, not splines — fit a spline in Fusion if wanted.
-- Public view: uncheck "Show mechanism" — only the path + indicator ring.
-- Debug hook for tests: `window.__ct` = {pivotScreen(name), geo, cfg, pose,
-  pan, zoom, rotPt, screen (=TX), dir (=rotDir), rebuild(), ticks, chunks,
-  bbox, pathJ, undoDepth(), buildParts(), buildPoints(),
-  lenOf(ext), extAt(t), strokeOf(), actGeom(p,t), JOYCE, dump()}. mobile.html
-  adds {peek, sheetOpen, setSheet(), pick(x,y,type)}. The builders return DXF
-  text so tests can assert on the export without a download. `dump()` returns
-  geo+cfg as JSON — this is how the owner hands over a hand-tuned design:
-  `copy(__ct.dump())` in the console.
+The full decision log for every built feature (actuator-type UI, drag handles, drag-regions overlay, undo, Reset, zoom/pan/rotate, path divisions, label thinning, bounding box, saves, DXF export) is in `docs/ui-decisions.md`; mobile-only behaviour is in `docs/mobile-ui.md`; settled reverts are in TODO.md "Settled — do not redo". Read the relevant section before touching that feature. The owner's standing "don'ts":
+- Don't rebuild the drag validity gate — drags are free-form; the "Drag regions" overlay only advises.
+- Don't reintroduce a drop shadow, tick strokes, or 1° sub-ticks. Divisions cut ACROSS the path; only 10° labels are drawn.
+- The DXF never thins labels; the screen does. That is the one allowed screen/DXF disagreement.
+- `rotRad()` is the only place the rotation sign is negated — never a bare `cfg.rot*DEG`. Verify drags MID-drag; release refits and hides bugs.
+- tickList positions come from `pose()`, not the 140-sample path, and carry the normal's side forward across cusps. Don't "simplify" either.
+- Nothing auto-restores on load except `geo.actT` (`couplerThermometer.actT`).
+- Mobile: no geometry sliders (`verify_mobile.py` asserts the id-set difference); `?` stays at the left end of the toolbar; `⟲` stays tinted `--warn` next to undo; a collapsed sheet shows only the pill — don't put the tiles back without asking; range inputs keep `touch-action:pan-y`.
 
 ## Verification pattern used throughout
 
@@ -611,60 +218,16 @@ persistence tests, screenshot and inspect. Keep doing this for changes.
 **After any change, run all three:**
 
 ```
-python3 tools/verify_export.py     # index.html, 601 lines of checks
+python3 tools/verify_export.py     # index.html, the full desktop suite
 python3 tools/sync_core.py         # the two pages' cores are identical
 python3 tools/verify_mobile.py     # mobile.html on a 390x844 phone viewport
 ```
 
-`tools/dxf.py` holds the shared DXF reader — its own module because
-`verify_export.py` runs its whole suite at import time.
-
-Two things `verify_mobile.py` has to do that the desktop one does not, both
-worth knowing before you edit it:
-
-- Playwright's touchscreen API taps only; it cannot express a pinch or tag a
-  drag with a `pointerType`. It dispatches raw `PointerEvent`s instead.
-- Those carry pointer ids that are not real active pointers, so
-  `setPointerCapture` throws `NotFoundError`. `ready(pg)` stubs it out after
-  every load — call it after every `reload()`, along with stopping the sweep.
+`tools/dxf.py` and the Playwright gotchas `verify_mobile.py` depends on: `tools/CLAUDE.md`.
 
 ## Known open items / next steps
 
-Tracked in **TODO.md**; fabrication measurements and the DXF layer
-reference in **FABRICATION.md**. Kept in sync — update those, not just here.
-
-1. **Fabrication document** (owner has asked for this "when design is
-   final"): the DXF export now covers the drawing side — link outlines and
-   mount coordinates on a common frame. Still missing: pivot hardware
-   suggestions, actuator mounting-triangle detail, and the temp→extension
-   calibration table for the controller. Note the exports read the CURRENT
-   geo, and the chosen Serpentine preset still violates the original search
-   constraints (see the preset section) — re-confirm before cutting metal.
-2. ~~Marks in the path~~ — DONE 2026-07-19. The indicator is a ring the
-   viewer reads the temperature *through*, so anything beside the path is
-   covered up. Screen and DXF now agree: divisions cut ACROSS the path, one
-   per whole degree, no tick strokes alongside, labels every 10°F. The DXF
-   emits them on layer PATH_DIVISIONS from the same pathChunks drawScale
-   uses, so the two cannot drift apart.
-   `PATHW=1.0` in buildPoints is the engraved path width in inches — the one
-   number the screen can't supply, since canvas widths are in pixels. Make
-   it a field if it needs tuning against real stock.
-   Method note from 2026-07-19: an earlier attempt bundled five changes at
-   once (band width, restyled tiers, ring indicator, new field) and was
-   reverted because the owner couldn't see the wanted change through the
-   unwanted ones. Land one change at a time here.
-3. **.linkage2 export** — write the chosen geometry as XML for David
-   Rector's Linkage program (Windows; blog.rectorsquid.com). Not started.
-4. Unresolved question: owner once asked for "beginning and ending point
-   control for actuator"; clarification returned "no preference". The
-   excursion fields may already satisfy it. Re-confirm before building
-   anything (candidates were: XY fields for actuator mounts, absolute
-   length endpoints, or crank start/end angles).
-5. Possible polish: auto-thin tick labels where the non-linear scale
-   crowds them (owner was told this is available on request).
-6. Real-world drive: temperature sensor → controller → actuator position;
-   the sim's temp→extension mapping (linear within excursion, optional
-   reverse) is the spec the controller must implement.
+Open work is tracked in **TODO.md**; fabrication measurements and the DXF layer reference in **FABRICATION.md** — update those, not this file. Land one change at a time: a five-change bundle was once reverted because the owner couldn't see the wanted change through the unwanted ones. Exports read the CURRENT geo, and the chosen Serpentine still violates the original constraints — re-confirm before cutting metal.
 
 ## Owner preferences observed
 

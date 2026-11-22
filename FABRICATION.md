@@ -8,13 +8,22 @@ current design. Numbers come from `tools/analyze_geometry.py`; re-run it after
 python3 tools/analyze_geometry.py dump.json     # dump.json = copy(__ct.dump())
 ```
 
-## Hardware — two selectable actuator types
+## Hardware — three selectable actuator types
 
 The simulator's Actuator drive section selects between:
 
 - **Generic pin-to-pin** — retracted length and stroke are editable fields,
   defaulting to **24″ retracted + 18″ stroke = 42″ extended** (the original
   assumed hardware). Old saved designs load as this.
+- **Fixed in the post** (added 2026-08-23) — the actuator clamped rigid inside
+  the mounting post so it cannot rock, with a con-rod from the rod tip to the
+  crank pin. What the shop has to add over the rocking mounts: a **guided
+  carriage or slide block at the rod tip** (the machine screw must not take the
+  con-rod's side load — check the Joyce manual's figure), the con-rod itself, and
+  two more pin joints. The engraved curve does not change; the tick spacing
+  does. Rationale, feasible dimensions and the measured trade-offs are in
+  [FIXED-ACTUATOR.md](FIXED-ACTUATOR.md). In this mode the Points DXF labels the
+  4th mount **ACT_BASE** rather than ACT_ANCHOR / ACT_CLAMP.
 - **Joyce QS11940 (the owner's actual actuator)** — rear mount is a split
   clamp sliding on the tube, pivot pin offset from the tube axis. All
   dimensions below were measured from the owner's Fusion model
@@ -171,3 +180,22 @@ would sit underneath it and be invisible.
   linear within the excursion, with optional reversal:
   `extension = extMin + (T − Tmin)/(Tmax − Tmin) × (extMax − extMin)`.
 - `.linkage2` export for David Rector's Linkage program, if wanted.
+
+## The Joyce rod end is metric (moved from CLAUDE.md 2026-11-22)
+
+**The Joyce rod end is metric, and it dictates the crank.** Measured off the
+owner's Fusion model 2026-08-09 (the imperial figures in FABRICATION.md are
+conversions of these): pin **Ø12.000**, tang eye **Ø34.000**, tang thickness
+**14.000**, tang width **26.000**, rod **Ø35.000**, pin 51.000 ahead of the tube
+front, tang→rod step 27.000 — all mm, all exact. Only the tube is imperial
+(50.80 = 2.000″). Consequences for the full-scale build:
+- R takes a **12 mm pin**, so that joint is metric by the part, not by choice.
+- The crank runs on **ONE side of the tang**, not straddling it. Straddling puts
+  B's nut inside the tang's plane, where the Ø34 eye needs ≥25.3 mm of spacing;
+  single-sided moves B's hardware out of that plane entirely and 24 mm suffices.
+- Single-sided means the R pin is in **single shear with an offset load**.
+- The crank arm swings to within **18.8°** of the rod axis, and the tang (14
+  thick) necks down from a Ø35 rod. A plate tucked just clear of the tang
+  (~11–13 mm off centre) therefore FOULS the rod about 27–38 mm behind the pin.
+  Fix by offsetting the crank ≥22 mm off the tang centre-plane, or by scalloping
+  the crank locally — the latter keeps the pin's moment arm small.
